@@ -36,7 +36,20 @@ export interface MeshAPIConfig {
    * Useful for mocking in tests or polyfilling in older environments.
    */
   fetch?: typeof fetch;
+
+  /**
+   * Maximum number of retries for 429 and 5xx errors.
+   * Streaming requests are never retried.
+   * @default 3
+   */
+  maxRetries?: number;
 }
+
+const RETRY_STATUS_CODES = new Set([429, 502, 503, 504]);
+const BACKOFF_BASE_MS = 500;
+const BACKOFF_MAX_MS = 30_000;
+const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
+const SDK_VERSION_VALUE = "node/0.1.0";
 
 // ── HTTP client ───────────────────────────────────────────────────────────────
 
@@ -46,6 +59,7 @@ export class HttpClient {
   private readonly defaultTimeoutMs: number;
   private readonly defaultSignal: AbortSignal | undefined;
   private readonly fetchImpl: typeof fetch;
+  private readonly maxRetries: number;
 
   constructor(config: MeshAPIConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -53,6 +67,7 @@ export class HttpClient {
     this.defaultTimeoutMs = config.timeoutMs ?? 60_000;
     this.defaultSignal = config.signal;
     this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
+    this.maxRetries = config.maxRetries ?? 3;
   }
 
   async get<T>(path: string, opts?: RequestOptions): Promise<T> {
@@ -108,6 +123,7 @@ export class HttpClient {
       "Authorization": `Bearer ${this.token}`,
       "Content-Type": "application/json",
       "Accept": "application/json",
+      [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
     };
   }
 
@@ -140,17 +156,47 @@ export class HttpClient {
       init.body = JSON.stringify(body);
     }
 
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
+    let attempt = 0;
+    while (true) {
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
 
-    if (response.status === 204) {
-      return undefined as T;
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      if (RETRY_STATUS_CODES.has(response.status) && attempt < this.maxRetries) {
+        const delay = this.computeDelay(attempt, this.getRetryAfter(response));
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        attempt++;
+        continue;
+      }
+
+      if (!response.ok) {
+        throw await MeshAPIApiError.fromResponse(response);
+      }
+
+      const contentType = response.headers.get("content-type") ?? "";
+      if (!contentType.includes("application/json")) {
+        return (await response.text()) as unknown as T;
+      }
+
+      return response.json() as Promise<T>;
     }
+  }
 
-    if (!response.ok) {
-      throw await MeshAPIApiError.fromResponse(response);
-    }
+  private computeDelay(attempt: number, retryAfterMs: number | null): number {
+    const baseMs =
+      retryAfterMs ?? BACKOFF_BASE_MS * Math.pow(2, attempt);
+    const capped = Math.min(baseMs, BACKOFF_MAX_MS);
+    const jitter = capped * (0.8 + Math.random() * 0.4); // ±20%
+    return jitter;
+  }
 
-    return response.json() as Promise<T>;
+  private getRetryAfter(response: Response): number | null {
+    const header = response.headers.get("retry-after");
+    if (!header) return null;
+    const seconds = parseFloat(header);
+    return isNaN(seconds) ? null : Math.ceil(seconds) * 1000;
   }
 }
 
