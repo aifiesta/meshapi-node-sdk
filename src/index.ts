@@ -7,14 +7,14 @@ import { TemplatesResource } from "./resources/templates.js";
 // ── Main client ───────────────────────────────────────────────────────────────
 
 /**
- * RouterSVC SDK client.
+ * MeshAPI SDK client.
  *
  * One instance = one auth realm. Create separate instances for different
  * authentication contexts (data-plane vs. control-plane vs. admin).
  *
  * @example
  * ```ts
- * import { MeshAPI } from "routersvc-node-sdk";
+ * import { MeshAPI } from "meshapi-node-sdk";
  *
  * // Data-plane client (rsk_ key) — for chat completions
  * const client = new MeshAPI({
@@ -76,7 +76,7 @@ export class MeshAPI {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
-export { RouterSvcApiError } from "./errors.js";
+export { MeshAPIApiError } from "./errors.js";
 export type { MeshAPIConfig } from "./http.js";
 
 export type {

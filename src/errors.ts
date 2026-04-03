@@ -1,14 +1,14 @@
 import type { ApiErrorBody, ApiErrorEnvelope } from "./types.js";
 
 /**
- * Thrown for every non-2xx response from the RouterSVC API.
+ * Thrown for every non-2xx response from the MeshAPI API.
  *
  * @example
  * ```ts
  * try {
  *   await client.chat.completions.create({ ... });
  * } catch (err) {
- *   if (err instanceof RouterSvcApiError) {
+ *   if (err instanceof MeshAPIApiError) {
  *     console.error(err.status, err.errorCode, err.requestId);
  *     if (err.errorCode === "rate_limit_exceeded") {
  *       console.log("Retry after:", err.retryAfterSeconds, "seconds");
@@ -17,7 +17,7 @@ import type { ApiErrorBody, ApiErrorEnvelope } from "./types.js";
  * }
  * ```
  */
-export class RouterSvcApiError extends Error {
+export class MeshAPIApiError extends Error {
   /** HTTP status code (e.g. 401, 429, 500). 0 means the response body could not be parsed. */
   readonly status: number;
 
@@ -51,7 +51,7 @@ export class RouterSvcApiError extends Error {
     envelope: ApiErrorEnvelope,
   ) {
     super(envelope.error.message);
-    this.name = "RouterSvcApiError";
+    this.name = "MeshAPIApiError";
     this.status = status;
     this.errorCode = envelope.error.code;
     this.requestId = envelope.request_id;
@@ -66,24 +66,24 @@ export class RouterSvcApiError extends Error {
     if (typeof captureStackTrace === "function") {
       (captureStackTrace as (target: object, constructor: unknown) => void)(
         this,
-        RouterSvcApiError,
+        MeshAPIApiError,
       );
     }
   }
 
   /**
-   * Attempt to build a RouterSvcApiError from an HTTP response.
+   * Attempt to build a MeshAPIApiError from an HTTP response.
    * Falls back to a synthetic "parse_error" if the body is not valid JSON
    * or does not match the expected envelope shape.
    */
-  static async fromResponse(response: Response): Promise<RouterSvcApiError> {
+  static async fromResponse(response: Response): Promise<MeshAPIApiError> {
     const contentType = response.headers.get("content-type") ?? "";
 
     if (contentType.includes("application/json")) {
       try {
         const body = (await response.json()) as Partial<ApiErrorEnvelope>;
         if (body.error && typeof body.error.code === "string") {
-          return new RouterSvcApiError(response.status, body as ApiErrorEnvelope);
+          return new MeshAPIApiError(response.status, body as ApiErrorEnvelope);
         }
       } catch {
         // fall through to parse_error
@@ -105,6 +105,6 @@ export class RouterSvcApiError extends Error {
       } satisfies ApiErrorBody,
       request_id: response.headers.get("x-request-id") ?? "",
     };
-    return new RouterSvcApiError(response.status, syntheticEnvelope);
+    return new MeshAPIApiError(response.status, syntheticEnvelope);
   }
 }

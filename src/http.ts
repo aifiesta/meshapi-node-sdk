@@ -1,11 +1,11 @@
-import { RouterSvcApiError } from "./errors.js";
+import { MeshAPIApiError } from "./errors.js";
 import type { ChatCompletionChunk, RequestOptions } from "./types.js";
 
 // ── Client config ─────────────────────────────────────────────────────────────
 
 export interface MeshAPIConfig {
   /**
-   * Base URL of the RouterSVC gateway.
+   * Base URL of the MeshAPI gateway.
    * @example "https://api.yourdomain.com"
    */
   baseUrl: string;
@@ -95,7 +95,7 @@ export class HttpClient {
     });
 
     if (!response.ok) {
-      throw await RouterSvcApiError.fromResponse(response);
+      throw await MeshAPIApiError.fromResponse(response);
     }
 
     return response;
@@ -147,7 +147,7 @@ export class HttpClient {
     }
 
     if (!response.ok) {
-      throw await RouterSvcApiError.fromResponse(response);
+      throw await MeshAPIApiError.fromResponse(response);
     }
 
     return response.json() as Promise<T>;
@@ -163,7 +163,7 @@ export class HttpClient {
  * Handles:
  * - Partial chunks (remainder buffer strategy)
  * - [DONE] sentinel — stops iteration
- * - Mid-stream error frames — throws RouterSvcApiError
+ * - Mid-stream error frames — throws MeshAPIApiError
  * - TextDecoder with `fatal: false` to survive binary padding bytes
  */
 export async function* parseSSEStream(
@@ -214,7 +214,7 @@ export async function* parseSSEStream(
 /**
  * Parse a single SSE frame string into a ChatCompletionChunk.
  * Returns null if the frame is the [DONE] sentinel or has no data lines.
- * Throws RouterSvcApiError if the frame contains an error payload.
+ * Throws MeshAPIApiError if the frame contains an error payload.
  */
 function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
   const dataLines: string[] = [];
@@ -245,7 +245,7 @@ function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
       const err = parsed["error"];
       const requestId =
         typeof parsed["request_id"] === "string" ? parsed["request_id"] : "";
-      throw new RouterSvcApiError(0, {
+      throw new MeshAPIApiError(0, {
         error: {
           code: typeof err["code"] === "string" ? err["code"] : "upstream_error",
           message:

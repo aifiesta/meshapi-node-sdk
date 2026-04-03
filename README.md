@@ -1,6 +1,6 @@
-# routersvc-node-sdk
+# meshapi-node-sdk
 
-TypeScript SDK for the **RouterSVC** AI model gateway — an OpenAI-compatible API that proxies to OpenRouter with multi-tenant key management, rate limiting, and prompt templates.
+TypeScript SDK for the **MeshAPI** AI model gateway — an OpenAI-compatible API that proxies to OpenRouter with multi-tenant key management, rate limiting, and prompt templates.
 
 Supports **Node.js 18+** with full TypeScript strict-mode types, native `fetch`, and streaming via `AsyncIterable`.
 
@@ -9,14 +9,14 @@ Supports **Node.js 18+** with full TypeScript strict-mode types, native `fetch`,
 ## Installation
 
 ```bash
-npm install routersvc-node-sdk
+npm install meshapi-node-sdk
 ```
 
 Or with pnpm / yarn:
 
 ```bash
-pnpm add routersvc-node-sdk
-yarn add routersvc-node-sdk
+pnpm add meshapi-node-sdk
+yarn add meshapi-node-sdk
 ```
 
 ---
@@ -24,7 +24,7 @@ yarn add routersvc-node-sdk
 ## Quick Start
 
 ```ts
-import { MeshAPI } from "routersvc-node-sdk";
+import { MeshAPI } from "meshapi-node-sdk";
 
 const client = new MeshAPI({
   baseUrl: "https://api.yourdomain.com",
@@ -36,7 +36,7 @@ const client = new MeshAPI({
 
 ## Authentication
 
-RouterSVC has distinct auth realms. Use **one client instance per realm**:
+MeshAPI has distinct auth realms. Use **one client instance per realm**:
 
 | Realm | Token | Endpoints |
 |---|---|---|
@@ -76,7 +76,7 @@ const client = new MeshAPI({
 ### 1. Chat Completions (non-streaming)
 
 ```ts
-import { MeshAPI } from "routersvc-node-sdk";
+import { MeshAPI } from "meshapi-node-sdk";
 
 const client = new MeshAPI({
   baseUrl: "https://api.yourdomain.com",
@@ -252,10 +252,10 @@ await ctrlClient.templates.delete("uuid-here");
 
 ## Error Handling
 
-All API errors throw `RouterSvcApiError`, a subclass of `Error` with structured fields:
+All API errors throw `MeshAPIApiError`, a subclass of `Error` with structured fields:
 
 ```ts
-import { MeshAPI, RouterSvcApiError } from "routersvc-node-sdk";
+import { MeshAPI, MeshAPIApiError } from "meshapi-node-sdk";
 
 try {
   const response = await client.chat.completions.create({
@@ -265,7 +265,7 @@ try {
   console.log(response.choices[0]?.message.content);
 
 } catch (err) {
-  if (err instanceof RouterSvcApiError) {
+  if (err instanceof MeshAPIApiError) {
     console.error(`[${err.status}] ${err.errorCode}: ${err.message}`);
     console.error("Request ID:", err.requestId);
 
@@ -320,7 +320,7 @@ try {
 
 ### Streaming errors
 
-Mid-stream errors (sent as SSE frames before `[DONE]`) are automatically detected and thrown as `RouterSvcApiError` within the `for await` loop:
+Mid-stream errors (sent as SSE frames before `[DONE]`) are automatically detected and thrown as `MeshAPIApiError` within the `for await` loop:
 
 ```ts
 try {
@@ -328,7 +328,7 @@ try {
     process.stdout.write(chunk.choices[0]?.delta.content ?? "");
   }
 } catch (err) {
-  if (err instanceof RouterSvcApiError) {
+  if (err instanceof MeshAPIApiError) {
     // e.g. errorCode: "upstream_error", status: 0 (headers already sent)
     console.error("Stream error:", err.errorCode, err.message);
   }
@@ -351,7 +351,7 @@ import type {
   TemplateSummary,
   CreateTemplateParams,
   MeshAPIConfig,
-} from "routersvc-node-sdk";
+} from "meshapi-node-sdk";
 ```
 
 ---
@@ -360,7 +360,7 @@ import type {
 
 ```bash
 git clone <repo>
-cd routersvc-node-sdk
+cd meshapi-node-sdk
 npm install
 npm run build       # outputs to dist/
 npm run typecheck   # type-check without emitting

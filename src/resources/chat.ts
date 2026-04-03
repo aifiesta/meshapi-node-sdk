@@ -37,7 +37,7 @@ export class ChatCompletionsResource {
    * Auth: API key (`rsk_...`)
    *
    * Returns an `AsyncIterable<ChatCompletionChunk>` that yields SSE frames
-   * as they arrive. Throws `RouterSvcApiError` on mid-stream error frames.
+   * as they arrive. Throws `MeshAPIApiError` on mid-stream error frames.
    *
    * @example
    * ```ts

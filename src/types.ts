@@ -1,6 +1,6 @@
 /**
- * All request/response types for the RouterSVC SDK.
- * Derived from the RouterSVC Python Pydantic schemas.
+ * All request/response types for the MeshAPI SDK.
+ * Derived from the MeshAPI Python Pydantic schemas.
  */
 
 // ── Shared ────────────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ export interface ChatCompletionParams {
   model?: string;
   messages: ChatMessage[];
 
-  // RouterSVC extensions — stripped before forwarding to upstream
+  // MeshAPI extensions — stripped before forwarding to upstream
   /** Prompt template name or ID to use */
   template?: string;
   /** Variable values for {{slot}} substitution in the template */
