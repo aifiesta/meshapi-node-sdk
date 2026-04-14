@@ -303,6 +303,14 @@ function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
       });
     }
 
+    // Responses API emits lifecycle/reasoning events whose `type` field starts
+    // with "response." (e.g. "response.reasoning_text.delta"). These are not
+    // chat-completion-chunk shaped; skip them so callers always receive a
+    // well-typed ChatCompletionChunk rather than a miscast object.
+    if (typeof parsed["type"] === "string" && parsed["type"].startsWith("response.")) {
+      continue;
+    }
+
     // Normal chunk — parsed is Record<string,unknown> from isRecord guard; cast via unknown
     return parsed as unknown as ChatCompletionChunk;
   }
@@ -340,6 +348,9 @@ export function makeLazySSEIterable(
 
       return {
         async next(): Promise<IteratorResult<ChatCompletionChunk>> {
+          // `init()` is called at most once: `for await...of` — the only
+          // sensible consumer of an SSE stream — awaits each next() before
+          // issuing the next, so concurrent calls here are unreachable.
           if (!iterator) {
             iterator = await init();
           }

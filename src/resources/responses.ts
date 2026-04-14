@@ -35,8 +35,12 @@ export class ResponsesResource {
    *
    * Auth: API key (`rsk_...`)
    *
-   * Returns an `AsyncIterable<ChatCompletionChunk>` that yields SSE frames
-   * as they arrive. The chunk format is identical to chat/completions streaming.
+   * Returns an `AsyncIterable<ChatCompletionChunk>` that yields only
+   * chat-completion-chunk shaped events (`object: "chat.completion.chunk"`).
+   * Responses API lifecycle and reasoning events whose `type` field starts
+   * with `"response."` (e.g. `"response.reasoning_text.delta"`,
+   * `"response.reasoning_summary_text.delta"`) are silently dropped by the
+   * SSE parser — they are not exposed as a distinct type in this SDK yet.
    *
    * @example
    * ```ts
