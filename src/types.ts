@@ -243,7 +243,7 @@ export interface TemplateSummary {
 
 export interface ReasoningConfig {
   /** Reasoning depth — higher = better quality, more tokens. */
-  effort: "minimal" | "low" | "medium" | "high";
+  effort: "low" | "medium" | "high";
 }
 
 export interface ResponsesParams {
@@ -314,6 +314,7 @@ export interface ResponsesResponse {
   model: string;
   choices: ResponsesChoice[];
   usage: UsageInfo | null;
+  system_fingerprint: string | null;
 }
 
 // ── Errors (wire format) ──────────────────────────────────────────────────────

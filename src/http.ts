@@ -313,3 +313,53 @@ function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+// ── Lazy SSE iterable helper ───────────────────────────────────────────────────
+
+/**
+ * Returns a lazy `AsyncIterable<ChatCompletionChunk>` that only initiates the
+ * streaming POST when the caller begins iterating. Shared by all resources that
+ * stream SSE (chat/completions, responses, …) so the lazy-init machinery and
+ * iterator protocol live in one place.
+ */
+export function makeLazySSEIterable(
+  http: HttpClient,
+  path: string,
+  params: unknown,
+  opts?: RequestOptions,
+): AsyncIterable<ChatCompletionChunk> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<ChatCompletionChunk> {
+      let iterator: AsyncIterator<ChatCompletionChunk> | null = null;
+
+      const init = async (): Promise<AsyncIterator<ChatCompletionChunk>> => {
+        const response = await http.stream(path, params, opts);
+        const gen = parseSSEStream(response);
+        return gen[Symbol.asyncIterator]();
+      };
+
+      return {
+        async next(): Promise<IteratorResult<ChatCompletionChunk>> {
+          if (!iterator) {
+            iterator = await init();
+          }
+          return iterator.next();
+        },
+        async return(
+          value?: unknown,
+        ): Promise<IteratorResult<ChatCompletionChunk>> {
+          if (iterator?.return) {
+            return iterator.return(value);
+          }
+          return { done: true, value: undefined as unknown as ChatCompletionChunk };
+        },
+        async throw(err?: unknown): Promise<IteratorResult<ChatCompletionChunk>> {
+          if (iterator?.throw) {
+            return iterator.throw(err);
+          }
+          throw err;
+        },
+      };
+    },
+  };
+}

@@ -1,4 +1,4 @@
-import { parseSSEStream } from "../http.js";
+import { makeLazySSEIterable } from "../http.js";
 import type { HttpClient } from "../http.js";
 import type {
   ChatCompletionChunk,
@@ -76,43 +76,6 @@ export class ResponsesResource {
     params: ResponsesParams,
     opts?: RequestOptions,
   ): AsyncIterable<ChatCompletionChunk> {
-    // Lazy AsyncIterable — the streaming request is only initiated when the
-    // caller begins iterating, matching the pattern used in ChatCompletionsResource.
-    const http = this.http;
-
-    return {
-      [Symbol.asyncIterator](): AsyncIterator<ChatCompletionChunk> {
-        let iterator: AsyncIterator<ChatCompletionChunk> | null = null;
-
-        const init = async (): Promise<AsyncIterator<ChatCompletionChunk>> => {
-          const response = await http.stream("/v1/responses", params, opts);
-          const gen = parseSSEStream(response);
-          return gen[Symbol.asyncIterator]();
-        };
-
-        return {
-          async next(): Promise<IteratorResult<ChatCompletionChunk>> {
-            if (!iterator) {
-              iterator = await init();
-            }
-            return iterator.next();
-          },
-          async return(
-            value?: unknown,
-          ): Promise<IteratorResult<ChatCompletionChunk>> {
-            if (iterator?.return) {
-              return iterator.return(value);
-            }
-            return { done: true, value: undefined as unknown as ChatCompletionChunk };
-          },
-          async throw(err?: unknown): Promise<IteratorResult<ChatCompletionChunk>> {
-            if (iterator?.throw) {
-              return iterator.throw(err);
-            }
-            throw err;
-          },
-        };
-      },
-    };
+    return makeLazySSEIterable(this.http, "/v1/responses", params, opts);
   }
 }
