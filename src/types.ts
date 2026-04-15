@@ -239,6 +239,84 @@ export interface TemplateSummary {
   updated_at: string;
 }
 
+// ── Responses ─────────────────────────────────────────────────────────────────
+
+export interface ReasoningConfig {
+  /** Reasoning depth — higher = better quality, more tokens. */
+  effort: "low" | "medium" | "high";
+}
+
+export interface ResponsesParams {
+  /** Plain text query or structured message list (same format as ChatMessage[]). */
+  input: string | ChatMessage[];
+  /** Model ID (e.g. "openai/o4-mini"). Optional if the API key has a default model. */
+  model?: string;
+
+  // MeshAPI extension — stripped before forwarding to upstream
+  /** Groups related requests for analytics. */
+  session_id?: string;
+
+  // Streaming
+  stream?: boolean;
+
+  // Inference params
+  max_output_tokens?: number;
+  temperature?: number;
+  top_p?: number;
+  seed?: number;
+
+  // Responses API-specific
+  /** Enable chain-of-thought reasoning. */
+  reasoning?: ReasoningConfig;
+  /** Function tools the model may call (same OpenAI format as chat/completions). */
+  tools?: Tool[];
+  tool_choice?: ToolChoice;
+  /**
+   * Enforce a specific output format.
+   * - `{ type: "json_object" }` — output must be valid JSON.
+   * - `{ type: "json_schema", json_schema: {...} }` — output must match the schema.
+   */
+  response_format?:
+    | { type: "json_object" }
+    | { type: "json_schema"; json_schema: Record<string, unknown> };
+  /** Deprecated web-search plugin config. Prefer function tools for new integrations. */
+  plugins?: Record<string, unknown>[];
+
+  /** Client identifier for abuse-detection (max 256 chars). */
+  user?: string;
+}
+
+export interface ResponsesMessageReasoning {
+  /** Encrypted reasoning trace (opaque — used for multi-turn continuity). */
+  encrypted_content?: string | null;
+  /** Human-readable summary of the reasoning steps taken. */
+  summary?: string | null;
+}
+
+export interface ResponsesMessage {
+  role: "assistant";
+  content: string | null;
+  tool_calls?: ToolCall[];
+  /** Present when reasoning was enabled on the request. */
+  reasoning?: ResponsesMessageReasoning | null;
+}
+
+export interface ResponsesChoice {
+  index: number;
+  message: ResponsesMessage;
+  finish_reason: string | null;
+}
+
+export interface ResponsesResponse {
+  id: string;
+  object: string;
+  created: number;
+  model: string;
+  choices: ResponsesChoice[];
+  usage: UsageInfo | null;
+  system_fingerprint: string | null;
+}
+
 // ── Errors (wire format) ──────────────────────────────────────────────────────
 
 export interface ApiErrorBody {

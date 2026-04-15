@@ -2,6 +2,7 @@ import { HttpClient } from "./http.js";
 import type { MeshAPIConfig } from "./http.js";
 import { ChatResource } from "./resources/chat.js";
 import { ModelsResource } from "./resources/models.js";
+import { ResponsesResource } from "./resources/responses.js";
 import { TemplatesResource } from "./resources/templates.js";
 
 // ── Main client ───────────────────────────────────────────────────────────────
@@ -45,6 +46,26 @@ export class MeshAPI {
   readonly chat: ChatResource;
 
   /**
+   * Responses namespace — higher-level inference for reasoning models.
+   * Requires a data-plane API key (`rsk_...`).
+   *
+   * Uses `input` (string or message list) instead of `messages`, supports
+   * `reasoning.effort` for chain-of-thought, and `max_output_tokens` instead
+   * of `max_tokens`. Streaming uses the same SSE chunk format as chat/completions.
+   *
+   * @example
+   * ```ts
+   * const response = await client.responses.create({
+   *   model: "openai/o4-mini",
+   *   input: "Explain the halting problem simply.",
+   *   reasoning: { effort: "medium" },
+   * });
+   * console.log(response.choices[0]?.message.content);
+   * ```
+   */
+  readonly responses: ResponsesResource;
+
+  /**
    * Models namespace.
    * Accepts either a data-plane API key or a Supabase JWT.
    *
@@ -69,6 +90,7 @@ export class MeshAPI {
   constructor(config: MeshAPIConfig) {
     const http = new HttpClient(config);
     this.chat = new ChatResource(http);
+    this.responses = new ResponsesResource(http);
     this.models = new ModelsResource(http);
     this.templates = new TemplatesResource(http);
   }
@@ -114,6 +136,14 @@ export type {
   CreateTemplateParams,
   UpdateTemplateParams,
   TemplateMessage,
+
+  // Responses
+  ReasoningConfig,
+  ResponsesParams,
+  ResponsesResponse,
+  ResponsesChoice,
+  ResponsesMessage,
+  ResponsesMessageReasoning,
 
   // Errors (wire types)
   ApiErrorBody,
