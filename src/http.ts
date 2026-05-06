@@ -86,6 +86,11 @@ export class HttpClient {
     await this.request<void>("DELETE", path, undefined, opts);
   }
 
+  async getBytes(path: string, opts?: RequestOptions): Promise<Uint8Array> {
+    const response = await this.requestRaw("GET", path, undefined, opts);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
   /**
    * Initiate a streaming request and return the raw Response.
    * The timeout signal here covers only the initial connection (TTFB);
@@ -184,6 +189,43 @@ export class HttpClient {
     }
   }
 
+  private async requestRaw(
+    method: string,
+    path: string,
+    body: unknown,
+    opts?: RequestOptions,
+  ): Promise<Response> {
+    const signal = this.buildSignal(opts);
+
+    const init: RequestInit = {
+      method,
+      headers: this.buildHeaders(),
+      signal: signal as AbortSignal,
+    };
+
+    if (body !== undefined) {
+      init.body = JSON.stringify(body);
+    }
+
+    let attempt = 0;
+    while (true) {
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
+
+      if (RETRY_STATUS_CODES.has(response.status) && attempt < this.maxRetries) {
+        const delay = this.computeDelay(attempt, this.getRetryAfter(response));
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        attempt++;
+        continue;
+      }
+
+      if (!response.ok) {
+        throw await MeshAPIApiError.fromResponse(response);
+      }
+
+      return response;
+    }
+  }
+
   private computeDelay(attempt: number, retryAfterMs: number | null): number {
     const baseMs =
       retryAfterMs ?? BACKOFF_BASE_MS * Math.pow(2, attempt);
@@ -215,6 +257,12 @@ export class HttpClient {
 export async function* parseSSEStream(
   response: Response,
 ): AsyncIterable<ChatCompletionChunk> {
+  yield* parseJSONSSEStream<ChatCompletionChunk>(response);
+}
+
+export async function* parseJSONSSEStream<T>(
+  response: Response,
+): AsyncIterable<T> {
   if (!response.body) {
     throw new Error("Response body is null; cannot parse SSE stream.");
   }
@@ -230,7 +278,7 @@ export async function* parseSSEStream(
       if (done) {
         // Flush any remaining buffered data
         if (remainder.trim()) {
-          const chunk = tryParseSSEFrame(remainder);
+          const chunk = tryParseJSONSSEFrame<T>(remainder);
           if (chunk !== null) yield chunk;
         }
         break;
@@ -248,7 +296,7 @@ export async function* parseSSEStream(
       for (const frame of frames) {
         if (!frame.trim()) continue;
 
-        const chunk = tryParseSSEFrame(frame);
+        const chunk = tryParseJSONSSEFrame<T>(frame);
         if (chunk !== null) yield chunk;
       }
     }
@@ -263,6 +311,10 @@ export async function* parseSSEStream(
  * Throws MeshAPIApiError if the frame contains an error payload.
  */
 function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
+  return tryParseJSONSSEFrame<ChatCompletionChunk>(frame);
+}
+
+function tryParseJSONSSEFrame<T>(frame: string): T | null {
   const dataLines: string[] = [];
 
   for (const line of frame.split("\n")) {
@@ -312,7 +364,7 @@ function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
     }
 
     // Normal chunk — parsed is Record<string,unknown> from isRecord guard; cast via unknown
-    return parsed as unknown as ChatCompletionChunk;
+    return parsed as unknown as T;
   }
 
   return null;
