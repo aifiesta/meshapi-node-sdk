@@ -1,105 +1,93 @@
 # meshapi-node-sdk
 
-TypeScript SDK for the **MeshAPI** AI model gateway — an OpenAI-compatible API that proxies to OpenRouter with multi-tenant key management, rate limiting, and prompt templates.
+Official TypeScript SDK for [Mesh API](https://meshapi.ai), an AI model gateway that gives you instant access to 321 LLMs through a single OpenAI-compatible API.
 
-Supports **Node.js 18+** with full TypeScript strict-mode types, native `fetch`, and streaming via `AsyncIterable`.
+Code once with the chat completions signature you already know. Switch between OpenAI, Anthropic, Google, Meta, Mistral, DeepSeek, xAI, Alibaba and the rest by changing a model string. Streaming, tool calling, vision, embeddings, multi-model compare, batch jobs and prompt templates from a single client.
 
----
+```ts
+import { MeshAPI } from "meshapi-node-sdk";
 
-## Installation
+const client = new MeshAPI({
+  baseUrl: "https://api.meshapi.ai",
+  token: process.env.MESHAPI_API_KEY!,
+});
+
+const reply = await client.chat.completions.create({
+  model: "anthropic/claude-sonnet-4.5",
+  messages: [{ role: "user", content: "Write a haiku about TypeScript." }],
+});
+
+console.log(reply.choices[0]?.message.content);
+```
+
+Node 18+. Zero runtime dependencies. Native `fetch`, `AsyncIterable` streaming, full strict-mode types.
+
+## Install
 
 ```bash
 npm install meshapi-node-sdk
-```
-
-Or with pnpm / yarn:
-
-```bash
 pnpm add meshapi-node-sdk
 yarn add meshapi-node-sdk
 ```
 
----
+Get a key at [meshapi.ai](https://meshapi.ai). Data-plane keys are prefixed `rsk_`.
 
-## Quick Start
+## What you get
+
+| | |
+|---|---|
+| **One Universal API** | Code once. A single `chat.completions.create` call works across 321 base models. |
+| **Streaming + tool calling** | SSE streaming via `AsyncIterable`, function calling with structured tool definitions, vision and audio content parts. |
+| **Reasoning models** | First-class `responses` API with `reasoning.effort` and `max_output_tokens` for o-series and similar models. |
+| **Embeddings** | Drop-in OpenAI-compatible embeddings endpoint. |
+| **Multi-model compare** | Fire one prompt at N models in parallel and stream their replies side-by-side. |
+| **Batches + Files** | Async bulk inference jobs at discounted rates with file upload, download and lifecycle management. |
+| **Prompt templates** | Server-stored prompts with `{{variable}}` slots. Update prompts without redeploying. |
+| **Provider fallbacks** | If a provider experiences downtime, the gateway falls back to another supported model so your inference stays up. |
+| **Built-in rate limiting** | Per-key RPM and RPD limits to prevent runaway costs. HTTP 429 with `retry_after` surfaced as `MeshAPIApiError.retryAfterSeconds`. |
+| **Unified billing** | One account balance covers every model. No juggling subscriptions. |
+| **Structured errors** | `MeshAPIApiError` with `errorCode`, `status`, `requestId`, `retryAfterSeconds`, and provider error details. |
+| **TypeScript-native** | Strict-mode types for every request and response, including streaming chunks and tool call deltas. |
+
+## Configuration
 
 ```ts
-import { MeshAPI } from "meshapi-node-sdk";
-
 const client = new MeshAPI({
-  baseUrl: "https://api.yourdomain.com",
-  token: "rsk_01JXXXXXXXXXXXXXXXXXXXXXXXXX", // data-plane API key
+  baseUrl: "https://api.meshapi.ai",  // required
+  token: "rsk_...",                    // required: data-plane key or Supabase JWT
+  timeoutMs: 60_000,                   // default 60s
+  signal: controller.signal,           // optional global AbortSignal
+  fetch: customFetch,                  // optional fetch override (mocks, polyfills)
 });
 ```
 
----
+Two auth realms. Use one client per realm.
 
-## Authentication
-
-MeshAPI has distinct auth realms. Use **one client instance per realm**:
-
-| Realm | Token | Endpoints |
+| Realm | Token | Resources |
 |---|---|---|
-| **Data-plane** | `rsk_<ULID>` | `chat.completions`, `models` |
+| **Data-plane** | `rsk_<ULID>` | `chat`, `responses`, `embeddings`, `compare`, `files`, `batches` |
 | **Control-plane** | Supabase JWT | `templates`, `models` |
 
-```ts
-// Data-plane client — chat completions
-const dataClient = new MeshAPI({
-  baseUrl: "https://api.yourdomain.com",
-  token: "rsk_01JXXXXXXXXXXXXXXXXXXXXXXXXX",
-});
+`models` accepts either token type.
 
-// Control-plane client — manage templates
-const ctrlClient = new MeshAPI({
-  baseUrl: "https://api.yourdomain.com",
-  token: supabaseSession.access_token,
-});
-```
-
-### Configuration Options
+## Chat completions
 
 ```ts
-const client = new MeshAPI({
-  baseUrl: "https://api.yourdomain.com",  // required
-  token: "rsk_...",                        // required
-  timeoutMs: 30_000,                       // default: 60_000 (60s)
-  signal: myAbortController.signal,        // optional global AbortSignal
-  fetch: customFetch,                      // optional fetch override (for mocking/polyfills)
-});
-```
-
----
-
-## Usage Examples
-
-### 1. Chat Completions (non-streaming)
-
-```ts
-import { MeshAPI } from "meshapi-node-sdk";
-
-const client = new MeshAPI({
-  baseUrl: "https://api.yourdomain.com",
-  token: "rsk_01JXXXXXXXXXXXXXXXXXXXXXXXXX",
-});
-
-const response = await client.chat.completions.create({
+const reply = await client.chat.completions.create({
   model: "openai/gpt-4o-mini",
   messages: [
-    { role: "system", content: "You are a helpful assistant." },
+    { role: "system", content: "You are a concise assistant." },
     { role: "user", content: "What is the capital of France?" },
   ],
   temperature: 0.7,
   max_tokens: 256,
 });
 
-console.log(response.choices[0]?.message.content);
-// → "The capital of France is Paris."
-
-console.log(`Tokens used: ${response.usage?.total_tokens}`);
+console.log(reply.choices[0]?.message.content);
+console.log(`Tokens: ${reply.usage?.total_tokens}`);
 ```
 
-### 2. Chat Completions (streaming)
+### Streaming
 
 ```ts
 const stream = client.chat.completions.create({
@@ -108,55 +96,44 @@ const stream = client.chat.completions.create({
   stream: true,
 });
 
-let fullText = "";
-
 for await (const chunk of stream) {
-  const delta = chunk.choices[0]?.delta.content ?? "";
-  process.stdout.write(delta);
-  fullText += delta;
+  process.stdout.write(chunk.choices[0]?.delta.content ?? "");
 }
-
-console.log("\n--- Full response:", fullText);
 ```
 
-#### Streaming with tool calls
+### Tool calling
 
 ```ts
 const stream = client.chat.completions.create({
   model: "openai/gpt-4o",
   messages: [{ role: "user", content: "What's the weather in Paris?" }],
-  tools: [
-    {
-      type: "function",
-      function: {
-        name: "get_weather",
-        description: "Get current weather for a city",
-        parameters: {
-          type: "object",
-          properties: {
-            city: { type: "string" },
-          },
-          required: ["city"],
-        },
+  tools: [{
+    type: "function",
+    function: {
+      name: "get_weather",
+      description: "Get current weather for a city",
+      parameters: {
+        type: "object",
+        properties: { city: { type: "string" } },
+        required: ["city"],
       },
     },
-  ],
+  }],
   tool_choice: "auto",
   stream: true,
 });
 
 for await (const chunk of stream) {
-  // handle delta content or tool_calls
-  console.log(JSON.stringify(chunk.choices[0]?.delta));
+  const delta = chunk.choices[0]?.delta;
+  if (delta?.tool_calls) console.log("tool call:", delta.tool_calls);
+  else if (delta?.content) process.stdout.write(delta.content);
 }
 ```
 
-#### Cancelling a stream
+### Cancelling a stream
 
 ```ts
 const controller = new AbortController();
-
-// Cancel after 5 seconds
 setTimeout(() => controller.abort(), 5_000);
 
 const stream = client.chat.completions.create(
@@ -169,206 +146,219 @@ try {
     process.stdout.write(chunk.choices[0]?.delta.content ?? "");
   }
 } catch (err) {
-  if ((err as Error).name === "AbortError") {
-    console.log("Stream cancelled.");
+  if ((err as Error).name === "AbortError") console.log("\nCancelled.");
+}
+```
+
+## Responses API (reasoning models)
+
+```ts
+const reply = await client.responses.create({
+  model: "openai/o4-mini",
+  input: "Explain the halting problem in two sentences.",
+  reasoning: { effort: "medium" },
+  max_output_tokens: 512,
+});
+
+console.log(reply.choices[0]?.message.content);
+```
+
+Streaming works the same way as `chat.completions`.
+
+## Embeddings
+
+```ts
+const result = await client.embeddings.create({
+  model: "openai/text-embedding-3-small",
+  input: ["hello world", "goodbye world"],
+});
+
+console.log(result.data[0].embedding.length);
+```
+
+## Compare (multi-model fanout)
+
+```ts
+const stream = client.compare.create({
+  prompt: "Summarize this paragraph in one sentence: ...",
+  models: [
+    { model: "openai/gpt-4o-mini" },
+    { model: "anthropic/claude-sonnet-4.5" },
+    { model: "google/gemini-2.5-flash" },
+  ],
+  stream: true,
+});
+
+for await (const event of stream) {
+  if (event.type === "delta") {
+    console.log(`[${event.model}]`, event.delta);
   }
 }
 ```
 
-### 3. Using Prompt Templates
+## Files and Batches
 
-Templates let you define reusable prompts with `{{variable}}` slots.
+Upload a JSONL of requests, kick off a batch, poll until done. Batch jobs run at discounted pricing.
 
 ```ts
-// Create a template (control-plane JWT required)
-const ctrlClient = new MeshAPI({
-  baseUrl: "https://api.yourdomain.com",
-  token: supabaseSession.access_token,
+import { readFileSync } from "node:fs";
+
+const file = await client.files.upload({
+  file: new Blob([readFileSync("requests.jsonl")]),
+  purpose: "batch",
 });
 
-const template = await ctrlClient.templates.create({
-  name: "support-agent",
-  system: "You are a helpful customer support agent for {{company}}. Be concise and friendly.",
-  model: "openai/gpt-4o-mini",
-  variables: ["company"],
+const batch = await client.batches.create({
+  input_file_id: file.id,
+  endpoint: "/v1/chat/completions",
+  completion_window: "24h",
 });
 
-console.log("Created template:", template.id);
-
-// Use the template in a chat completion (data-plane key)
-const response = await client.chat.completions.create({
-  messages: [{ role: "user", content: "How do I reset my password?" }],
-  template: "support-agent",         // template name or UUID
-  variables: { company: "Acme Corp" },
-});
-
-console.log(response.choices[0]?.message.content);
+// Poll later
+const status = await client.batches.get(batch.id);
+if (status.status === "completed" && status.output_file_id) {
+  const output = await client.files.downloadContent(status.output_file_id);
+  // output is a Uint8Array of JSONL
+}
 ```
 
-### 4. Listing Models
+## Models
 
 ```ts
-// All models
 const all = await client.models.list();
-
-// Free models only
 const free = await client.models.free();
-
-// Paid models only
 const paid = await client.models.paid();
 
-// List with filter param
-const freeViaParam = await client.models.list({ free: true });
-
-// Print model pricing
-for (const model of paid.slice(0, 5)) {
+for (const m of paid.slice(0, 5)) {
   console.log(
-    `${model.id} — prompt: $${model.pricing.prompt_usd_per_1k}/1k, ` +
-    `completion: $${model.pricing.completion_usd_per_1k}/1k`
+    `${m.id}: prompt $${m.pricing.prompt_usd_per_1k}/1k, ` +
+    `completion $${m.pricing.completion_usd_per_1k}/1k`
   );
 }
 ```
 
-### 5. Template CRUD
+Free models (`is_free: true`) cost $0 for both prompt and completion, useful for testing and light tasks. Paid models charge per token against your account balance.
+
+## Prompt templates
+
+Server-stored prompts with `{{variable}}` interpolation. Reference them by name from `chat.completions` to skip re-sending system prompts every request.
 
 ```ts
-// List all templates
-const templates = await ctrlClient.templates.list();
-
-// Get a specific template
-const t = await ctrlClient.templates.get("uuid-here");
-
-// Update a template
-const updated = await ctrlClient.templates.update("uuid-here", {
-  system: "You are a concise assistant for {{company}}.",
-  model: "openai/gpt-4o",
+// Create a template (control-plane JWT)
+const ctrl = new MeshAPI({
+  baseUrl: "https://api.meshapi.ai",
+  token: supabaseSession.access_token,
 });
 
-// Delete a template
-await ctrlClient.templates.delete("uuid-here");
+await ctrl.templates.create({
+  name: "support-agent",
+  system: "You are a support agent for {{company}}. Be concise and friendly.",
+  model: "openai/gpt-4o-mini",
+  variables: ["company"],
+});
+
+// Use it (data-plane rsk_ key)
+const reply = await client.chat.completions.create({
+  messages: [{ role: "user", content: "How do I reset my password?" }],
+  template: "support-agent",
+  variables: { company: "Acme Corp" },
+});
+
+// CRUD
+const list = await ctrl.templates.list();
+const t = await ctrl.templates.get("uuid");
+await ctrl.templates.update("uuid", { model: "openai/gpt-4o" });
+await ctrl.templates.delete("uuid");
 ```
 
----
-
-## Error Handling
-
-All API errors throw `MeshAPIApiError`, a subclass of `Error` with structured fields:
+## Error handling
 
 ```ts
 import { MeshAPI, MeshAPIApiError } from "meshapi-node-sdk";
 
 try {
-  const response = await client.chat.completions.create({
-    model: "openai/gpt-4o-mini",
-    messages: [{ role: "user", content: "Hello" }],
-  });
-  console.log(response.choices[0]?.message.content);
-
+  await client.chat.completions.create({ ... });
 } catch (err) {
   if (err instanceof MeshAPIApiError) {
     console.error(`[${err.status}] ${err.errorCode}: ${err.message}`);
     console.error("Request ID:", err.requestId);
 
     switch (err.errorCode) {
-      case "rate_limit_exceeded":
-        console.log(`Retry after ${err.retryAfterSeconds}s`);
-        break;
-
-      case "spend_limit_exceeded":
-        console.log("Spend cap reached — add credits.");
-        break;
-
-      case "unauthorized":
-        console.log("Invalid or missing API key.");
-        break;
-
-      case "model_not_found":
-        console.log("Model not supported by the gateway.");
-        break;
-
-      case "upstream_error":
-        console.log("Upstream provider error:", err.providerError);
-        break;
-
-      case "validation_error":
-        console.log("Validation details:", err.details);
-        break;
+      case "rate_limit_exceeded": console.log(`Retry after ${err.retryAfterSeconds}s`); break;
+      case "spend_limit_exceeded": console.log("Account balance exhausted. Top up to continue."); break;
+      case "unauthorized": console.log("Invalid API key."); break;
+      case "model_not_found": console.log("Model not supported."); break;
+      case "upstream_error": console.log("Provider error:", err.providerError); break;
+      case "validation_error": console.log("Invalid request:", err.details); break;
     }
   } else {
-    // Network error, AbortError, etc.
-    throw err;
+    throw err; // network, AbortError, etc.
   }
 }
 ```
 
-### Error codes reference
-
-| Code | HTTP | Description |
+| Code | HTTP | Meaning |
 |---|---|---|
-| `unauthorized` | 401 | Invalid or missing API key |
-| `forbidden` | 403 | Key suspended or access denied |
-| `not_found` | 404 | Resource not found |
-| `model_not_found` | 404 | Model not supported |
-| `validation_error` | 422 | Request body failed validation |
-| `unprocessable_entity` | 422 | Request cannot be processed |
+| `unauthorized` | 401 | Invalid or missing key |
+| `forbidden` | 403 | Key suspended |
+| `not_found` / `model_not_found` | 404 | Resource or model not found |
+| `spend_limit_exceeded` | 402 | Account balance at zero. Top up to continue. |
+| `validation_error` / `unprocessable_entity` | 422 | Bad request body |
 | `rate_limit_exceeded` | 429 | RPM or RPD limit hit |
-| `spend_limit_exceeded` | 402 | Per-key spend cap reached |
-| `upstream_error` | 500 | Upstream provider error |
-| `gateway_timeout` | 500 | Upstream provider timed out |
-| `internal_error` | 500 | Server error |
-| `parse_error` | — | Response body could not be parsed (SDK-level) |
+| `upstream_error` / `gateway_timeout` / `internal_error` | 500 | Upstream or server error |
+| `parse_error` | n/a | SDK could not parse response body |
 
-### Streaming errors
-
-Mid-stream errors (sent as SSE frames before `[DONE]`) are automatically detected and thrown as `MeshAPIApiError` within the `for await` loop:
-
-```ts
-try {
-  for await (const chunk of stream) {
-    process.stdout.write(chunk.choices[0]?.delta.content ?? "");
-  }
-} catch (err) {
-  if (err instanceof MeshAPIApiError) {
-    // e.g. errorCode: "upstream_error", status: 0 (headers already sent)
-    console.error("Stream error:", err.errorCode, err.message);
-  }
-}
-```
-
----
+Mid-stream errors (sent as SSE frames before `[DONE]`) throw inside the `for await` loop with the same `MeshAPIApiError` type.
 
 ## TypeScript
 
-The SDK ships full `.d.ts` declarations. Key types:
+Full `.d.ts` declarations ship with the package. Common types:
 
 ```ts
 import type {
+  MeshAPIConfig,
   ChatCompletionParams,
   ChatCompletionResponse,
   ChatCompletionChunk,
   ChatMessage,
+  Tool,
+  ToolCall,
+  ResponsesParams,
+  ResponsesResponse,
+  EmbeddingsParams,
+  EmbeddingsResponse,
+  CompareParams,
+  CompareStreamEvent,
+  BatchObject,
+  FileObject,
   ModelInfo,
+  ModelPricing,
   TemplateSummary,
   CreateTemplateParams,
-  MeshAPIConfig,
 } from "meshapi-node-sdk";
 ```
 
----
+## About Mesh API
 
-## Building from Source
+[Mesh API](https://meshapi.ai) is an AI model gateway that gives you instant access to a massive variety of LLMs through a single, unified API. Enjoy the developer experience you already know, upgraded with universal model access.
 
-```bash
-git clone <repo>
-cd meshapi-node-sdk
-npm install
-npm run build       # outputs to dist/
-npm run typecheck   # type-check without emitting
-```
+| | |
+|---|---|
+| **One Universal API** | A single `ChatCompletion` request works across 321 base models. |
+| **Unified Billing** | Deposit funds into one account and consume any model. No juggling provider subscriptions. |
+| **Free Tier** | Free models (`is_free: true`) cost $0 for both prompt and completion. Test and ship light workloads without funding. |
+| **Provider Fallbacks** | If a model or provider goes down, the gateway routes to another supported model so your inference stays up. |
+| **Built-in Rate Limiting** | Robust per-key limits prevent runaway costs. |
+| **Prompt Templates** | Manage, version and share prompts via a secure templating system. |
 
----
+Documentation lives at [developers.meshapi.ai](https://developers.meshapi.ai).
 
-## Requirements
+Built by the founders of [TagMango](https://tagmango.com) (YC W20) and [AI Fiesta](https://aifiesta.ai) (1M+ users).
 
-- **Node.js** >= 18 (uses native `fetch`, `AbortSignal.timeout`, `ReadableStream`)
-- **Zero runtime dependencies**
+## Related
+
+- [`meshapi-code`](https://github.com/aifiesta/meshapi-code): terminal chat REPL with tool calling
+
+## License
+
+[MIT](LICENSE)
