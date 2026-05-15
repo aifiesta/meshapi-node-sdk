@@ -1,0 +1,58 @@
+# Node.js SDK — Live Tests
+
+name: Live Tests
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  MESHAPI_BASE_URL: ${{ secrets.MESHAPI_BASE_URL }}
+  MESHAPI_TOKEN: ${{ secrets.MESHAPI_TOKEN }}
+  MESHAPI_MODEL: "openai/gpt-4o-mini"
+  MESHAPI_EMBEDDINGS_MODEL: "openai/text-embedding-3-small"
+  MESHAPI_SECOND_MODEL: "anthropic/claude-haiku-4-5"
+  MESHAPI_IMAGE_URL: "https://upload.wikimedia.org/wikipedia/commons/3/3f/Fronalpstock_big.jpg"
+
+jobs:
+  live-test:
+    name: Node.js SDK Live Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout SDK source (including tests)
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build SDK
+        run: npm ci && npm run build
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Install live-test dependencies
+        working-directory: livetests
+        run: npm install
+
+      - name: Run live tests
+        working-directory: livetests
+        run: npm run test:all
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## 🟨 Node.js SDK Live Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Node | 20 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Base URL | \`${{ env.MESHAPI_BASE_URL }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Model | \`${{ env.MESHAPI_MODEL }}\` |" >> $GITHUB_STEP_SUMMARY
