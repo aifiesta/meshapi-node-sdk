@@ -207,11 +207,17 @@ for await (const event of stream) {
 Upload a JSONL of requests, kick off a batch, poll until done. Batch jobs run at discounted pricing.
 
 ```ts
-import { readFileSync } from "node:fs";
-
 const file = await client.files.upload({
-  file: new Blob([readFileSync("requests.jsonl")]),
   purpose: "batch",
+  requests: [
+    {
+      custom_id: "req-1",
+      body: {
+        model: "openai/gpt-4o-mini",
+        messages: [{ role: "user", content: "Hello" }],
+      },
+    },
+  ],
 });
 
 const batch = await client.batches.create({
@@ -219,6 +225,7 @@ const batch = await client.batches.create({
   endpoint: "/v1/chat/completions",
   completion_window: "24h",
 });
+```
 
 // Create a template (works with data-plane key OR control-plane JWT)
 const client = new MeshAPI({
