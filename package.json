@@ -27,6 +27,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts",
+    "test:unit": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -39,6 +41,7 @@
   "license": "MIT",
   "devDependencies": {
     "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
     "typescript": "^5.4.0"
   }
 }

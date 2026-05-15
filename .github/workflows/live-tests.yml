@@ -1,0 +1,23 @@
+# Node.js SDK — Live Tests
+# Calls the reusable workflow in aifiesta/meshapi-sdk-livetest.
+# Set MESHAPI_TOKEN in: Settings → Secrets and Variables → Actions → Secrets
+
+name: Live Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  live-test:
+    name: Run Node.js Live Tests
+    uses: aifiesta/meshapi-sdk-livetest/.github/workflows/sdk-live-tests.yml@main
+    with:
+      language: node
+      node-version: "20"
+    secrets: inherit

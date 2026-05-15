@@ -1,0 +1,18 @@
+{
+  "name": "meshapi-sdk-test",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "meshapi-node-sdk": "file:.."
+  },
+  "scripts": {
+    "test:models": "node --test test-models.js",
+    "test:templates": "node --test test-templates.js",
+    "test:chat": "node --test test-chat.js",
+    "test:stream": "node --test test-stream.js",
+    "test:inference": "node --test test-inference.js",
+    "test:errors": "node --test test-errors.js",
+    "test:feature": "node --test test-feature-matrix.js",
+    "test:all": "node --test test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js"
+  }
+}
