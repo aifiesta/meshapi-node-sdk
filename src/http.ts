@@ -296,6 +296,13 @@ export async function* parseJSONSSEStream<T>(
       for (const frame of frames) {
         if (!frame.trim()) continue;
 
+        // Break early if we see the [DONE] sentinel
+        const lines = frame.split("\n");
+        const isDone = lines.some(line => line.startsWith("data: ") && line.slice(6).trim() === "[DONE]");
+        if (isDone) {
+          return;
+        }
+
         const chunk = tryParseJSONSSEFrame<T>(frame);
         if (chunk !== null) yield chunk;
       }
