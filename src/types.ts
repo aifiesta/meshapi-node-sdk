@@ -554,3 +554,12 @@ export interface ImageGenerationResponse {
   size?: string;
   usage?: ImageUsage;
 }
+
+export interface ImageGenerationChunk {
+  id?: string;
+  object?: string;
+  created: number;
+  model?: string;
+  data: ImageItem[];
+  status?: string;
+}

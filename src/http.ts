@@ -389,24 +389,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * stream SSE (chat/completions, responses, …) so the lazy-init machinery and
  * iterator protocol live in one place.
  */
-export function makeLazySSEIterable(
+export function makeLazySSEIterable<T = ChatCompletionChunk>(
   http: HttpClient,
   path: string,
   params: unknown,
   opts?: RequestOptions,
-): AsyncIterable<ChatCompletionChunk> {
+): AsyncIterable<T> {
   return {
-    [Symbol.asyncIterator](): AsyncIterator<ChatCompletionChunk> {
-      let iterator: AsyncIterator<ChatCompletionChunk> | null = null;
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      let iterator: AsyncIterator<T> | null = null;
 
-      const init = async (): Promise<AsyncIterator<ChatCompletionChunk>> => {
+      const init = async (): Promise<AsyncIterator<T>> => {
         const response = await http.stream(path, params, opts);
-        const gen = parseSSEStream(response);
+        const gen = parseJSONSSEStream<T>(response);
         return gen[Symbol.asyncIterator]();
       };
 
       return {
-        async next(): Promise<IteratorResult<ChatCompletionChunk>> {
+        async next(): Promise<IteratorResult<T>> {
           // `init()` is called at most once: `for await...of` — the only
           // sensible consumer of an SSE stream — awaits each next() before
           // issuing the next, so concurrent calls here are unreachable.
@@ -415,15 +415,13 @@ export function makeLazySSEIterable(
           }
           return iterator.next();
         },
-        async return(
-          value?: unknown,
-        ): Promise<IteratorResult<ChatCompletionChunk>> {
+        async return(value?: unknown): Promise<IteratorResult<T>> {
           if (iterator?.return) {
             return iterator.return(value);
           }
-          return { done: true, value: undefined as unknown as ChatCompletionChunk };
+          return { done: true, value: undefined as unknown as T };
         },
-        async throw(err?: unknown): Promise<IteratorResult<ChatCompletionChunk>> {
+        async throw(err?: unknown): Promise<IteratorResult<T>> {
           if (iterator?.throw) {
             return iterator.throw(err);
           }

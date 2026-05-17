@@ -175,6 +175,7 @@ export type {
 
   // Images
   ImageGenerationParams,
+  ImageGenerationChunk,
   ImageGenerationResponse,
   ImageItem,
   ImageUsage,
