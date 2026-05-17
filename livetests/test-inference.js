@@ -28,8 +28,9 @@ function batchRequests(tag) {
 
 describe("embeddings", () => {
   it("create returns embedding vectors", async () => {
-    const embeddingsModel = env("MESHAPI_EMBEDDINGS_MODEL", MODEL);
+    const embeddingsModel = env("MESHAPI_EMBEDDINGS_MODEL", "openai/text-embedding-3-small");
     const result = await client.embeddings.create({
+
       model: embeddingsModel,
       input: "MeshAPI embeddings smoke test",
     });

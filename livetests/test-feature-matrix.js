@@ -25,8 +25,9 @@ describe("feature matrix — stable options", () => {
   });
 
   it("embeddings with multi-input array and user", async () => {
-    const embeddingsModel = env("MESHAPI_EMBEDDINGS_MODEL", MODEL);
+    const embeddingsModel = env("MESHAPI_EMBEDDINGS_MODEL", "openai/text-embedding-3-small");
     const result = await client.embeddings.create({
+
       model: embeddingsModel,
       input: ["alpha", "beta"],
       user: "node-feature-matrix",
