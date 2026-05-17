@@ -195,6 +195,22 @@ const result = await client.images.generate({
 });
 
 console.log(result.data[0].url);
+
+// Streaming
+for await (const chunk of client.images.stream({
+  model: "openai/gpt-image-1",
+  prompt: "A watercolor of a fox in a snowy forest",
+  n: 1,
+  size: "1024x1024",
+  quality: "high",
+  output_format: "webp",
+})) {
+  if (chunk.status === "processing") {
+    console.log("Generating...");
+  } else if (chunk.data?.length) {
+    console.log("Done:", chunk.data[0].url);
+  }
+}
 ```
 
 ## Compare (multi-model fanout)
@@ -303,6 +319,22 @@ const result = await client.images.generate({
 });
 
 console.log(result.data[0].url);
+
+// Streaming
+for await (const chunk of client.images.stream({
+  model: "openai/gpt-image-1",
+  prompt: "A watercolor of a fox in a snowy forest",
+  n: 1,
+  size: "1024x1024",
+  quality: "high",
+  output_format: "webp",
+})) {
+  if (chunk.status === "processing") {
+    console.log("Generating...");
+  } else if (chunk.data?.length) {
+    console.log("Done:", chunk.data[0].url);
+  }
+}
 ```
 
 ### 6. Compare (Multi-model Fanout)
