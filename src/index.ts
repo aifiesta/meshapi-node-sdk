@@ -177,6 +177,7 @@ export type {
   ImageGenerationParams,
   ImageGenerationResponse,
   ImageItem,
+  ImageUsage,
 
   // Templates
   TemplateSummary,

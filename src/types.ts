@@ -527,15 +527,30 @@ export interface ImageGenerationParams {
   size?: string;
   quality?: string;
   response_format?: "url" | "b64_json";
+  output_format?: "png" | "jpeg" | "webp";
   stream?: boolean;
 }
 
 export interface ImageItem {
   url?: string;
   b64_json?: string;
+  revised_prompt?: string;
+}
+
+export interface ImageUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  input_tokens_details?: Record<string, number>;
+  output_tokens_details?: Record<string, number>;
 }
 
 export interface ImageGenerationResponse {
   created: number;
   data: ImageItem[];
+  background?: string;
+  output_format?: string;
+  quality?: string;
+  size?: string;
+  usage?: ImageUsage;
 }

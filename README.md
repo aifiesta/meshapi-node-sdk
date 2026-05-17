@@ -186,10 +186,12 @@ console.log(result.data[0].embedding.length);
 
 ```ts
 const result = await client.images.generate({
-  model: "openai/dall-e-3",
-  prompt: "A cute baby sea otter",
+  model: "openai/gpt-image-1",
+  prompt: "A watercolor of a fox in a snowy forest",
   n: 1,
   size: "1024x1024",
+  quality: "high",
+  output_format: "webp",
 });
 
 console.log(result.data[0].url);
@@ -292,10 +294,12 @@ console.log(result.data[0].embedding.length);
 
 ```ts
 const result = await client.images.generate({
-  model: "openai/dall-e-3",
-  prompt: "A cute baby sea otter",
+  model: "openai/gpt-image-1",
+  prompt: "A watercolor of a fox in a snowy forest",
   n: 1,
   size: "1024x1024",
+  quality: "high",
+  output_format: "webp",
 });
 
 console.log(result.data[0].url);
