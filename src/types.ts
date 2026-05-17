@@ -517,3 +517,25 @@ export interface BatchListResponse {
   first_id?: string | null;
   last_id?: string | null;
 }
+
+// ── Images ───────────────────────────────────────────────────────────────────
+
+export interface ImageGenerationParams {
+  prompt: string;
+  model?: string;
+  n?: number;
+  size?: string;
+  quality?: string;
+  response_format?: "url" | "b64_json";
+  stream?: boolean;
+}
+
+export interface ImageItem {
+  url?: string;
+  b64_json?: string;
+}
+
+export interface ImageGenerationResponse {
+  created: number;
+  data: ImageItem[];
+}

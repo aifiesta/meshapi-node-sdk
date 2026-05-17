@@ -126,3 +126,23 @@ describe("files and batches lifecycle", () => {
     }
   });
 });
+
+describe("images", () => {
+  it("generate returns created timestamp and data", async () => {
+    const imageGenModel = env("MESHAPI_IMAGE_GEN_MODEL");
+    if (!imageGenModel) {
+      console.log("Skipping images test: MESHAPI_IMAGE_GEN_MODEL not set");
+      return;
+    }
+    const resp = await client.images.generate({
+      model: imageGenModel,
+      prompt: "A small blue square on a white background.",
+      n: 1,
+      size: "1024x1024",
+    });
+    assert.ok(resp.created, "expected created timestamp");
+    assert.ok(Array.isArray(resp.data) && resp.data.length > 0, "expected image data");
+    assert.ok(resp.data[0].b64_json || resp.data[0].url, "expected image data");
+  });
+});
+

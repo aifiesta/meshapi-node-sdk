@@ -8,6 +8,7 @@ import { BatchesResource } from "./resources/batches.js";
 import { ModelsResource } from "./resources/models.js";
 import { ResponsesResource } from "./resources/responses.js";
 import { TemplatesResource } from "./resources/templates.js";
+import { ImagesResource } from "./resources/images.js";
 
 // ── Main client ───────────────────────────────────────────────────────────────
 
@@ -72,6 +73,7 @@ export class MeshAPI {
   readonly compare: CompareResource;
   readonly files: FilesResource;
   readonly batches: BatchesResource;
+  readonly images: ImagesResource;
 
   /**
    * Models namespace.
@@ -105,6 +107,7 @@ export class MeshAPI {
     this.batches = new BatchesResource(http);
     this.models = new ModelsResource(http);
     this.templates = new TemplatesResource(http);
+    this.images = new ImagesResource(http);
   }
 }
 
@@ -169,6 +172,11 @@ export type {
   CreateBatchParams,
   BatchObject,
   BatchListResponse,
+
+  // Images
+  ImageGenerationParams,
+  ImageGenerationResponse,
+  ImageItem,
 
   // Templates
   TemplateSummary,

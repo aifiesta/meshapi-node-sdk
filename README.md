@@ -182,6 +182,19 @@ const result = await client.embeddings.create({
 console.log(result.data[0].embedding.length);
 ```
 
+## Image Generation
+
+```ts
+const result = await client.images.generate({
+  model: "openai/dall-e-3",
+  prompt: "A cute baby sea otter",
+  n: 1,
+  size: "1024x1024",
+});
+
+console.log(result.data[0].url);
+```
+
 ## Compare (multi-model fanout)
 
 ```ts
@@ -273,6 +286,19 @@ const result = await client.embeddings.create({
 });
 
 console.log(result.data[0].embedding.length);
+```
+
+### Image Generation
+
+```ts
+const result = await client.images.generate({
+  model: "openai/dall-e-3",
+  prompt: "A cute baby sea otter",
+  n: 1,
+  size: "1024x1024",
+});
+
+console.log(result.data[0].url);
 ```
 
 ### 6. Compare (Multi-model Fanout)
