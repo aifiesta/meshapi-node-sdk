@@ -9,12 +9,10 @@ import assert from "node:assert/strict";
 import { MeshAPI, RealtimeError } from "meshapi-node-sdk";
 import { BASE_URL, TOKEN, env } from "./config.js";
 
-const REALTIME_MODEL = env("MESHAPI_REALTIME_MODEL", "");
+const REALTIME_MODEL = env("MESHAPI_REALTIME_MODEL", "openai/gpt-realtime-mini");
 
-function skipIfNoModel(t) {
-  if (!REALTIME_MODEL) {
-    t.skip("MESHAPI_REALTIME_MODEL not set — skipping realtime live tests");
-  }
+function skipIfNoModel(_t) {
+  // default is openai/gpt-realtime-mini; override via MESHAPI_REALTIME_MODEL
 }
 
 const client = new MeshAPI({ baseUrl: BASE_URL, token: TOKEN });
