@@ -5,12 +5,15 @@ import { BASE_URL, TOKEN, MODEL, SECOND_MODEL, env } from "./config.js";
 
 const client = new MeshAPI({ baseUrl: BASE_URL, token: TOKEN });
 
+// Not all models support the Batch API; this one is known to have batching enabled.
+const BATCH_MODEL = "openai/gpt-5-nano";
+
 function batchRequests(tag) {
   return [
     {
       custom_id: `${tag}-1`,
       body: {
-        model: MODEL,
+        model: BATCH_MODEL,
         messages: [{ role: "user", content: "Reply with the single word: hello" }],
         max_tokens: 10,
       },
@@ -18,7 +21,7 @@ function batchRequests(tag) {
     {
       custom_id: `${tag}-2`,
       body: {
-        model: MODEL,
+        model: BATCH_MODEL,
         messages: [{ role: "user", content: "Reply with the single word: world" }],
         max_tokens: 10,
       },
