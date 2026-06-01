@@ -29,7 +29,7 @@ export class RagResource {
     const qs = new URLSearchParams();
     if (params?.limit != null) qs.set("limit", String(params.limit));
     if (params?.offset != null) qs.set("offset", String(params.offset));
-    const path = qs.size > 0 ? `/v1/files?${qs}` : "/v1/files";
+    const path = qs.toString() ? `/v1/files?${qs}` : "/v1/files";
     return this.http.get<RagFileListResponse>(path, opts);
   }
 
