@@ -91,6 +91,9 @@ describe("rag", () => {
         console.log(`[PASS] rag.get → upload_status=${s.upload_status} embedding_status=${s.embedding_status}`);
         break;
       }
+      if (s.upload_status === "failed") {
+        throw new Error(`upload failed for ${upload.file_id}: error_code=${s.last_error_code}`);
+      }
       await sleep(2_000);
     }
     assert.ok(uploadReady, "upload_status did not reach 'ready' within 30s");
