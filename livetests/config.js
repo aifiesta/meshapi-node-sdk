@@ -31,5 +31,5 @@ export function env(name, fallback = undefined) {
 export const BASE_URL = env("MESHAPI_BASE_URL", "http://localhost:8000");
 export const TOKEN = env("MESHAPI_TOKEN", "rsk_01KN96KQWDPF2X1E9CP8567JY4");
 export const MODEL = env("MESHAPI_MODEL", "openai/gpt-4o-mini");
-const _secondModelFallback = MODEL === "anthropic/claude-haiku-4-5" ? "openai/gpt-4o-mini" : "anthropic/claude-haiku-4-5";
+const _secondModelFallback = MODEL === "anthropic/claude-haiku-4.5" ? "openai/gpt-4o-mini" : "anthropic/claude-haiku-4.5";
 export const SECOND_MODEL = env("MESHAPI_SECOND_MODEL", _secondModelFallback);
