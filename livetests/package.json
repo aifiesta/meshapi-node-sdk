@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "meshapi-node-sdk": "file:.."
+    "meshapi-node-sdk": "file:..",
+    "ws": "^8.18.0"
   },
   "scripts": {
     "test:models": "node --test test-models.js",
