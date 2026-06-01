@@ -50,7 +50,7 @@ describe("Realtime — WebSocket sessions", () => {
 
       await session.send({
         type: "session.update",
-        session: { instructions: "You are a helpful assistant." },
+        session: { type: "realtime", instructions: "You are a helpful assistant." },
       });
 
       const { value: ack } = await iter.next();
