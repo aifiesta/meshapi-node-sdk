@@ -13,6 +13,7 @@
     "test:inference": "node --test test-inference.js",
     "test:errors": "node --test test-errors.js",
     "test:feature": "node --test test-feature-matrix.js",
-    "test:all": "node --test test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js"
+    "test:rag": "node --test test-rag.js",
+    "test:all": "node --test test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js"
   }
 }

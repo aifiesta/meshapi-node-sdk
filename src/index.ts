@@ -3,12 +3,12 @@ import type { MeshAPIConfig } from "./http.js";
 import { ChatResource } from "./resources/chat.js";
 import { CompareResource } from "./resources/compare.js";
 import { EmbeddingsResource } from "./resources/embeddings.js";
-import { FilesResource } from "./resources/files.js";
 import { BatchesResource } from "./resources/batches.js";
 import { ModelsResource } from "./resources/models.js";
 import { ResponsesResource } from "./resources/responses.js";
 import { TemplatesResource } from "./resources/templates.js";
 import { ImagesResource } from "./resources/images.js";
+import { RagResource } from "./resources/rag.js";
 
 // ── Main client ───────────────────────────────────────────────────────────────
 
@@ -71,9 +71,9 @@ export class MeshAPI {
   readonly responses: ResponsesResource;
   readonly embeddings: EmbeddingsResource;
   readonly compare: CompareResource;
-  readonly files: FilesResource;
   readonly batches: BatchesResource;
   readonly images: ImagesResource;
+  readonly rag: RagResource;
 
   /**
    * Models namespace.
@@ -103,11 +103,11 @@ export class MeshAPI {
     this.responses = new ResponsesResource(http);
     this.embeddings = new EmbeddingsResource(http);
     this.compare = new CompareResource(http);
-    this.files = new FilesResource(http);
     this.batches = new BatchesResource(http);
     this.models = new ModelsResource(http);
     this.templates = new TemplatesResource(http);
     this.images = new ImagesResource(http);
+    this.rag = new RagResource(http);
   }
 }
 
@@ -167,8 +167,6 @@ export type {
   CompareResponse,
   CompareStreamEvent,
   BatchRequestItem,
-  UploadBatchFileParams,
-  FileObject,
   CreateBatchParams,
   BatchObject,
   BatchListResponse,
@@ -185,6 +183,20 @@ export type {
   CreateTemplateParams,
   UpdateTemplateParams,
   TemplateMessage,
+
+  // RAG
+  InitUploadRequest,
+  InitUploadResponse,
+  UploadFileParams,
+  RagFileStatus,
+  RagFileListResponse,
+  ListRagFilesParams,
+  BulkEmbedRequest,
+  BulkEmbedResult,
+  BulkEmbedResponse,
+  SearchRequest,
+  SearchResult,
+  SearchResponse,
 
   // Errors (wire types)
   ApiErrorBody,
