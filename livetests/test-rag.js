@@ -45,6 +45,21 @@ async function pollEmbedding(fileId) {
   throw new Error(`embedding did not reach 'ready' within ${MAX_EMBED_WAIT_MS}ms for ${fileId}`);
 }
 
+/**
+ * Paginate through all RAG files until fileId is found or the list is exhausted.
+ * Returns true if found.
+ */
+async function findFileInList(fileId) {
+  const pageSize = 50;
+  let offset = 0;
+  while (true) {
+    const page = await client.rag.list({ limit: pageSize, offset });
+    if (page.files.some((f) => f.file_id === fileId)) return true;
+    offset += page.files.length;
+    if (offset >= page.total) return false;
+  }
+}
+
 describe("rag", () => {
   it("upload, embed, and search lifecycle", async () => {
     const fileName = `node-livetest-${Date.now()}.txt`;
@@ -58,6 +73,9 @@ describe("rag", () => {
     assert.ok(upload.file_id, "expected file_id");
     assert.ok(upload.signed_url, "expected signed_url");
     console.log(`[PASS] rag.initUpload → file_id=${upload.file_id}`);
+
+    // Note: the RAG API has no DELETE endpoint, so uploaded files cannot be
+    // cleaned up programmatically. Each test run leaves one file in the account.
 
     // ── Step 2: PUT file content to signed URL ──
     await putFile(upload.signed_url, RAG_TEST_CONTENT, MIME_TYPE);
@@ -86,13 +104,12 @@ describe("rag", () => {
     await pollEmbedding(upload.file_id);
     console.log(`[PASS] embedding complete for ${upload.file_id}`);
 
-    // ── Step 6: List — file must appear ──
-    const fileList = await client.rag.list({ limit: 50 });
+    // ── Step 6: List — paginate until file is found or all pages exhausted ──
     assert.ok(
-      fileList.files.some((f) => f.file_id === upload.file_id),
+      await findFileInList(upload.file_id),
       `uploaded file ${upload.file_id} not found in list`,
     );
-    console.log(`[PASS] rag.list → total=${fileList.total}, uploaded file present`);
+    console.log(`[PASS] rag.list → uploaded file present`);
 
     // ── Step 7: Search ──
     const searchResp = await client.rag.search({

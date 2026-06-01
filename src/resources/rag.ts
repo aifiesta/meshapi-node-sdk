@@ -35,7 +35,7 @@ export class RagResource {
 
   /** Get the current status of a single RAG file. */
   get(fileId: string, opts?: RequestOptions): Promise<RagFileStatus> {
-    return this.http.get<RagFileStatus>(`/v1/files/${fileId}`, opts);
+    return this.http.get<RagFileStatus>(`/v1/files/${encodeURIComponent(fileId)}`, opts);
   }
 
   /**
