@@ -27,10 +27,10 @@ jobs:
       - name: Checkout SDK source (including tests)
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 20
+      - name: Set up Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Build SDK
         run: npm ci && npm run build
@@ -53,6 +53,6 @@ jobs:
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Node | 20 |" >> $GITHUB_STEP_SUMMARY
+          echo "| Node | 22 |" >> $GITHUB_STEP_SUMMARY
           echo "| Base URL | \`${{ env.MESHAPI_BASE_URL }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Model | \`${{ env.MESHAPI_MODEL }}\` |" >> $GITHUB_STEP_SUMMARY
