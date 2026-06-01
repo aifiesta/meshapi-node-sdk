@@ -55,6 +55,7 @@ async function findFileInList(fileId) {
   while (true) {
     const page = await client.rag.list({ limit: pageSize, offset });
     if (page.files.some((f) => f.file_id === fileId)) return true;
+    if (page.files.length === 0) return false; // guard against empty page / stale total
     offset += page.files.length;
     if (offset >= page.total) return false;
   }
