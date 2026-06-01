@@ -3,7 +3,6 @@ import type { MeshAPIConfig } from "./http.js";
 import { ChatResource } from "./resources/chat.js";
 import { CompareResource } from "./resources/compare.js";
 import { EmbeddingsResource } from "./resources/embeddings.js";
-import { FilesResource } from "./resources/files.js";
 import { BatchesResource } from "./resources/batches.js";
 import { ModelsResource } from "./resources/models.js";
 import { ResponsesResource } from "./resources/responses.js";
@@ -72,7 +71,6 @@ export class MeshAPI {
   readonly responses: ResponsesResource;
   readonly embeddings: EmbeddingsResource;
   readonly compare: CompareResource;
-  readonly files: FilesResource;
   readonly batches: BatchesResource;
   readonly images: ImagesResource;
   readonly rag: RagResource;
@@ -105,7 +103,6 @@ export class MeshAPI {
     this.responses = new ResponsesResource(http);
     this.embeddings = new EmbeddingsResource(http);
     this.compare = new CompareResource(http);
-    this.files = new FilesResource(http);
     this.batches = new BatchesResource(http);
     this.models = new ModelsResource(http);
     this.templates = new TemplatesResource(http);
@@ -170,8 +167,6 @@ export type {
   CompareResponse,
   CompareStreamEvent,
   BatchRequestItem,
-  UploadBatchFileParams,
-  FileObject,
   CreateBatchParams,
   BatchObject,
   BatchListResponse,

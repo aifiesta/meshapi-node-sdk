@@ -91,40 +91,25 @@ describe("compare", () => {
   });
 });
 
-describe("files and batches lifecycle", () => {
-  it("upload → get → content → create batch → list → get → cancel → delete", { skip: "files/batches endpoint validation mismatch — needs API spec investigation" }, async () => {
+describe("batches lifecycle", () => {
+  it("create → list → get → cancel", async () => {
     const tag = `node-livetest-${Date.now()}`;
-    const uploaded = await client.files.upload({ requests: batchRequests(tag) });
-    assert.ok(uploaded.id, "expected file id after upload");
 
-    try {
-      const fetched = await client.files.get(uploaded.id);
-      assert.equal(fetched.id, uploaded.id);
+    // Create batch with inline requests (no file upload step required)
+    const batch = await client.batches.create({
+      requests: batchRequests(tag),
+      metadata: { suite: "node-livetest" },
+    });
+    assert.ok(batch.id, "expected batch id");
 
-      const content = await client.files.content(uploaded.id);
-      assert.ok(content instanceof Uint8Array && content.length > 0, "expected non-empty file content");
-      const text = new TextDecoder().decode(content);
-      assert.ok(text.includes(`${tag}-1`), "expected file content to include custom_id");
+    const list = await client.batches.list({ limit: 10 });
+    assert.ok(list.data.some(b => b.id === batch.id), "created batch not found in list");
 
-      const batch = await client.batches.create({
-        input_file_id: uploaded.id,
-        endpoint: "/v1/chat/completions",
-        completion_window: "24h",
-        metadata: { suite: "node-livetest" },
-      });
-      assert.ok(batch.id, "expected batch id");
+    const got = await client.batches.get(batch.id);
+    assert.equal(got.id, batch.id);
 
-      const list = await client.batches.list({ limit: 10 });
-      assert.ok(list.data.some(b => b.id === batch.id), "created batch not found in list");
-
-      const got = await client.batches.get(batch.id);
-      assert.equal(got.id, batch.id);
-
-      const cancelled = await client.batches.cancel(batch.id);
-      assert.equal(cancelled.id, batch.id);
-    } finally {
-      await client.files.delete(uploaded.id).catch(() => {});
-    }
+    const cancelled = await client.batches.cancel(batch.id);
+    assert.equal(cancelled.id, batch.id);
   });
 });
 

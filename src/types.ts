@@ -471,27 +471,9 @@ export interface BatchRequestItem {
   body: Record<string, unknown>;
 }
 
-export interface UploadBatchFileParams {
-  purpose?: string;
-  requests: BatchRequestItem[];
-}
-
-export interface FileObject {
-  id: string;
-  object?: string;
-  bytes?: number;
-  created_at?: number;
-  filename?: string;
-  purpose?: string;
-  status?: string;
-  status_details?: unknown;
-  [key: string]: unknown;
-}
-
 export interface CreateBatchParams {
-  input_file_id: string;
-  endpoint: string;
-  completion_window: string;
+  requests: BatchRequestItem[];
+  completion_window?: string;
   metadata?: Record<string, unknown>;
 }
 
