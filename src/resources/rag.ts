@@ -57,19 +57,18 @@ export class RagResource {
    * has the `file_id`.
    */
   async uploadFile(params: UploadFileParams, opts?: RequestOptions): Promise<InitUploadResponse> {
-    const upload = await this.initUpload(
-      {
-        file_name: params.file_name,
-        mime_type: params.mime_type,
-        embed: params.embed,
-        metadata: params.metadata,
-      },
-      opts,
-    );
+    // Build InitUploadRequest without undefined optional fields so that
+    // exactOptionalPropertyTypes is satisfied.
+    const initReq: InitUploadRequest = { file_name: params.file_name, mime_type: params.mime_type };
+    if (params.embed !== undefined) initReq.embed = params.embed;
+    if (params.metadata !== undefined) initReq.metadata = params.metadata;
+
+    const upload = await this.initUpload(initReq, opts);
 
     const resp = await fetch(upload.signed_url, {
       method: "PUT",
-      body: params.content,
+      // Cast required: Uint8Array<ArrayBufferLike> vs BodyInit generic mismatch in strict TS.
+      body: params.content as BodyInit,
       headers: { "Content-Type": params.mime_type },
     });
 
