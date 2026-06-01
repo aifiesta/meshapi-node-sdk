@@ -88,9 +88,9 @@ async function openWebSocket(url: string, subprotocols: string[], headers: Recor
 
 // ── Session ───────────────────────────────────────────────────────────────────
 
-function buildWSUrl(baseUrl: string, model: string): string {
+function buildWSUrl(baseUrl: string, model: string, token: string): string {
   const base = baseUrl.replace(/\/$/, "").replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
-  return `${base}/v1/realtime?model=${encodeURIComponent(model)}`;
+  return `${base}/v1/realtime?model=${encodeURIComponent(model)}&api_key=${encodeURIComponent(token)}`;
 }
 
 function parseFrame(data: string | Buffer | ArrayBuffer | Buffer[] | Uint8Array): RealtimeMessage {
@@ -297,11 +297,11 @@ export class RealtimeResource {
    * ```
    */
   async connect(params: RealtimeConnectParams): Promise<RealtimeSession> {
-    const wsUrl = buildWSUrl(this._config.baseUrl, params.model);
+    const wsUrl = buildWSUrl(this._config.baseUrl, params.model, this._config.token);
 
     // Primary auth: Sec-WebSocket-Protocol header.
     // Subprotocol list sent as-is; the server echoes "openai-realtime".
-    const subprotocols = ["openai-realtime", `Bearer ${this._config.token}`];
+    const subprotocols = ["openai-realtime"];
 
     // Extra headers — used by the `ws` Node fallback (browsers ignore them).
     const headers: Record<string, string> = {
