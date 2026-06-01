@@ -9,6 +9,7 @@ import { ModelsResource } from "./resources/models.js";
 import { ResponsesResource } from "./resources/responses.js";
 import { TemplatesResource } from "./resources/templates.js";
 import { ImagesResource } from "./resources/images.js";
+import { RagResource } from "./resources/rag.js";
 
 // ── Main client ───────────────────────────────────────────────────────────────
 
@@ -74,6 +75,7 @@ export class MeshAPI {
   readonly files: FilesResource;
   readonly batches: BatchesResource;
   readonly images: ImagesResource;
+  readonly rag: RagResource;
 
   /**
    * Models namespace.
@@ -108,6 +110,7 @@ export class MeshAPI {
     this.models = new ModelsResource(http);
     this.templates = new TemplatesResource(http);
     this.images = new ImagesResource(http);
+    this.rag = new RagResource(http);
   }
 }
 
@@ -185,6 +188,19 @@ export type {
   CreateTemplateParams,
   UpdateTemplateParams,
   TemplateMessage,
+
+  // RAG
+  InitUploadRequest,
+  InitUploadResponse,
+  RagFileStatus,
+  RagFileListResponse,
+  ListRagFilesParams,
+  BulkEmbedRequest,
+  BulkEmbedResult,
+  BulkEmbedResponse,
+  SearchRequest,
+  SearchResult,
+  SearchResponse,
 
   // Errors (wire types)
   ApiErrorBody,

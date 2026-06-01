@@ -555,6 +555,94 @@ export interface ImageGenerationResponse {
   usage?: ImageUsage;
 }
 
+// ── RAG (Retrieval-Augmented Generation) ─────────────────────────────────────
+
+export interface InitUploadRequest {
+  file_name: string;
+  mime_type: string;
+  embed?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface InitUploadResponse {
+  file_id: string;
+  signed_url: string;
+  expires_at: string;
+}
+
+export interface RagFileStatus {
+  file_id: string;
+  upload_status: string;
+  file_name: string;
+  file_type: string;
+  mime_type: string;
+  size_bytes?: number | null;
+  asset_url?: string | null;
+  signed_url?: string | null;
+  signed_url_expires_at?: string | null;
+  embedding_status: string;
+  created_at: string;
+  updated_at: string;
+  total_tokens?: number | null;
+  total_cost_usd?: number | null;
+  last_error_code?: string | null;
+}
+
+export interface RagFileListResponse {
+  files: RagFileStatus[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ListRagFilesParams {
+  limit?: number;
+  offset?: number;
+}
+
+export interface BulkEmbedRequest {
+  file_ids: string[];
+  wait?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BulkEmbedResult {
+  file_id: string;
+  embedding_status: string;
+  chunk_count?: number | null;
+  error?: string | null;
+}
+
+export interface BulkEmbedResponse {
+  results: BulkEmbedResult[];
+}
+
+export interface SearchRequest {
+  query: string;
+  top_k?: number;
+  file_ids?: string[];
+  filter?: Record<string, unknown>;
+  date_from?: number;
+  date_to?: number;
+}
+
+export interface SearchResult {
+  score: number;
+  text: string;
+  parent_text: string;
+  file_id?: string | null;
+  file_name?: string | null;
+  file_type?: string | null;
+  mime_type?: string | null;
+  chunk_index?: number | null;
+  created_at?: number | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface SearchResponse {
+  results: SearchResult[];
+}
+
 export interface ImageGenerationChunk {
   id?: string;
   object?: string;
