@@ -546,6 +546,16 @@ export interface InitUploadRequest {
   metadata?: Record<string, unknown>;
 }
 
+/** Parameters for {@link RagResource.uploadFile} — combines init-upload fields with the raw file content. */
+export interface UploadFileParams {
+  file_name: string;
+  mime_type: string;
+  /** Raw file bytes to upload. */
+  content: Uint8Array | string;
+  embed?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
 export interface InitUploadResponse {
   file_id: string;
   signed_url: string;

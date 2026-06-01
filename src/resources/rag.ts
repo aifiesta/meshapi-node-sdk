@@ -10,6 +10,7 @@ import type {
   RequestOptions,
   SearchRequest,
   SearchResponse,
+  UploadFileParams,
 } from "../types.js";
 
 export class RagResource {
@@ -48,5 +49,34 @@ export class RagResource {
   /** Perform a vector similarity search over embedded files. */
   search(params: SearchRequest, opts?: RequestOptions): Promise<SearchResponse> {
     return this.http.post<SearchResponse>("/v1/files/search", params, opts);
+  }
+
+  /**
+   * Convenience wrapper: calls `initUpload` then PUTs the file content to the
+   * signed URL in one step. Returns the same `InitUploadResponse` so the caller
+   * has the `file_id`.
+   */
+  async uploadFile(params: UploadFileParams, opts?: RequestOptions): Promise<InitUploadResponse> {
+    const upload = await this.initUpload(
+      {
+        file_name: params.file_name,
+        mime_type: params.mime_type,
+        embed: params.embed,
+        metadata: params.metadata,
+      },
+      opts,
+    );
+
+    const resp = await fetch(upload.signed_url, {
+      method: "PUT",
+      body: params.content,
+      headers: { "Content-Type": params.mime_type },
+    });
+
+    if (!resp.ok) {
+      throw new Error(`rag: PUT signed URL returned HTTP ${resp.status}`);
+    }
+
+    return upload;
   }
 }

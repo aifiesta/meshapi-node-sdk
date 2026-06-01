@@ -187,6 +187,7 @@ export type {
   // RAG
   InitUploadRequest,
   InitUploadResponse,
+  UploadFileParams,
   RagFileStatus,
   RagFileListResponse,
   ListRagFilesParams,
