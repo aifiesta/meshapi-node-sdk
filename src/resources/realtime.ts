@@ -118,18 +118,6 @@ function parseFrame(data: string | Buffer | ArrayBuffer | Buffer[] | Uint8Array)
   }
 }
 
-function checkErrorEnvelope(msg: RealtimeMessage): void {
-  if (msg.event?.type === "error") {
-    const err = (msg.event.error ?? {}) as Record<string, string>;
-    throw new RealtimeError({
-      code: err.code ?? "unknown",
-      message: err.message ?? "realtime error",
-      ...(err.param !== undefined && { param: err.param }),
-      ...(msg.event.request_id !== undefined && { requestId: msg.event.request_id as string }),
-    });
-  }
-}
-
 /**
  * Active WebSocket session with the MeshAPI realtime endpoint.
  *
@@ -154,11 +142,18 @@ export class RealtimeSession {
   private _msgHandlers: Array<(msg: RealtimeMessage) => void> = [];
   private _errHandlers: Array<(err: RealtimeError | Error) => void> = [];
   private _closeHandlers: Array<(code: number, reason: string) => void> = [];
-  private _msgQueue: Array<RealtimeMessage | RealtimeError | null> = []; // null = close
-  private _waiters: Array<(item: RealtimeMessage | RealtimeError | null) => void> = [];
+  // null = clean close; Error (including RealtimeError) = abnormal termination.
+  private _msgQueue: Array<RealtimeMessage | Error | null> = [];
+  private _waiters: Array<(item: RealtimeMessage | Error | null) => void> = [];
+  // Resolves when the onclose event fires — used by close() to await the handshake.
+  private readonly _closedPromise: Promise<void>;
+  private _resolveClose!: () => void;
 
   constructor(ws: AnyWebSocket) {
     this._ws = ws;
+    this._closedPromise = new Promise<void>((resolve) => {
+      this._resolveClose = resolve;
+    });
 
     ws.onmessage = (ev) => {
       let msg: RealtimeMessage;
@@ -189,15 +184,19 @@ export class RealtimeSession {
     ws.onclose = (ev) => {
       this._closeHandlers.forEach((h) => h(ev.code, ev.reason));
       this._deliver(null);
+      this._resolveClose();
     };
 
     ws.onerror = (ev) => {
       const err = ev instanceof Error ? ev : new Error(String(ev));
       this._errHandlers.forEach((h) => h(err));
+      // Deliver the error into the iterator queue so for-await-of throws
+      // rather than hanging indefinitely waiting for the next message.
+      this._deliver(err);
     };
   }
 
-  private _deliver(item: RealtimeMessage | RealtimeError | null): void {
+  private _deliver(item: RealtimeMessage | Error | null): void {
     const waiter = this._waiters.shift();
     if (waiter) {
       waiter(item);
@@ -224,26 +223,38 @@ export class RealtimeSession {
 
   /** Send a JSON event as a text WebSocket frame. */
   async send(event: Record<string, unknown>): Promise<void> {
+    if (this._ws.readyState !== 1) {
+      throw new Error(`Cannot send: WebSocket is not open (readyState=${this._ws.readyState})`);
+    }
     this._ws.send(JSON.stringify(event));
   }
 
   /** Send raw audio bytes as a binary WebSocket frame. */
   async sendAudio(audio: Uint8Array): Promise<void> {
+    if (this._ws.readyState !== 1) {
+      throw new Error(`Cannot send: WebSocket is not open (readyState=${this._ws.readyState})`);
+    }
     this._ws.send(audio);
   }
 
-  /** Close the WebSocket connection. */
+  /**
+   * Close the WebSocket connection and wait for the close handshake to complete.
+   * Awaiting this method guarantees that no further onmessage callbacks will fire.
+   */
   async close(code = 1000, reason = ""): Promise<void> {
+    if (this._ws.readyState === 3 /* CLOSED */) return;
+    if (this._ws.readyState === 2 /* CLOSING */) return this._closedPromise;
     this._ws.close(code, reason);
+    return this._closedPromise;
   }
 
   /**
    * Async iterator — yields RealtimeMessages until the connection closes.
-   * Re-throws RealtimeError for server error envelopes.
+   * Throws on server error envelopes (RealtimeError) and transport errors (Error).
    */
   async *[Symbol.asyncIterator](): AsyncGenerator<RealtimeMessage> {
     while (true) {
-      const item = await new Promise<RealtimeMessage | RealtimeError | null>((resolve) => {
+      const item = await new Promise<RealtimeMessage | Error | null>((resolve) => {
         const queued = this._msgQueue.shift();
         if (queued !== undefined) {
           resolve(queued);
@@ -252,8 +263,8 @@ export class RealtimeSession {
         }
       });
 
-      if (item === null) return;          // connection closed
-      if (item instanceof RealtimeError) throw item;
+      if (item === null) return;   // clean close
+      if (item instanceof Error) throw item;
       yield item;
     }
   }
