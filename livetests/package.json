@@ -15,6 +15,6 @@
     "test:feature": "node --test test-feature-matrix.js",
     "test:rag": "node --test test-rag.js",
     "test:realtime": "node --test test-realtime.js",
-    "test:all": "node --test test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js test-realtime.js"
+    "test:all": "node --test --test-reporter=spec test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js test-realtime.js"
   }
 }
