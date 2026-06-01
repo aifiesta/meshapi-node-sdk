@@ -96,6 +96,7 @@ Create `node/.env.livetest` (read automatically by `config.js`) or export the va
 | `MESHAPI_EMBEDDINGS_MODEL` | No | `openai/text-embedding-3-small` | Model used in embeddings tests |
 | `MESHAPI_IMAGE_GEN_MODEL` | No | _(skipped if unset)_ | Image generation model; test skipped if blank |
 | `MESHAPI_IMAGE_URL` | No | _(skipped if unset)_ | Publicly accessible image URL for vision tests |
+| `MESHAPI_REALTIME_MODEL` | No | _(skipped if unset)_ | Realtime-capable model, e.g. `openai/gpt-4o-realtime-preview`; tests skipped if blank |
 
 Example `node/.env.livetest`:
 
@@ -149,6 +150,7 @@ node --test test-rag.js
 | `test-errors.js` | 401/404 error handling |
 | `test-feature-matrix.js` | Cross-model feature matrix |
 | `test-rag.js` | RAG upload → embed → list → search |
+| `test-realtime.js` | WebSocket connect/close, session.created, session.update, error envelopes, on() callbacks, async iterator |
 
 ### RAG live test notes
 

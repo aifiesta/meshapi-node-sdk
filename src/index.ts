@@ -9,6 +9,7 @@ import { ResponsesResource } from "./resources/responses.js";
 import { TemplatesResource } from "./resources/templates.js";
 import { ImagesResource } from "./resources/images.js";
 import { RagResource } from "./resources/rag.js";
+import { RealtimeResource } from "./resources/realtime.js";
 
 // ── Main client ───────────────────────────────────────────────────────────────
 
@@ -97,6 +98,20 @@ export class MeshAPI {
    */
   readonly templates: TemplatesResource;
 
+  /**
+   * Realtime namespace — bidirectional WebSocket sessions (Speech-to-Speech).
+   * Requires a data-plane API key (`rsk_...`) and a realtime-capable model.
+   *
+   * @example
+   * ```ts
+   * const session = await client.realtime.connect({ model: "openai/gpt-4o-realtime-preview" });
+   * for await (const msg of session) {
+   *   console.log(msg.event?.type);
+   * }
+   * ```
+   */
+  readonly realtime: RealtimeResource;
+
   constructor(config: MeshAPIConfig) {
     const http = new HttpClient(config);
     this.chat = new ChatResource(http);
@@ -108,6 +123,7 @@ export class MeshAPI {
     this.templates = new TemplatesResource(http);
     this.images = new ImagesResource(http);
     this.rag = new RagResource(http);
+    this.realtime = new RealtimeResource(config);
   }
 }
 
@@ -202,3 +218,7 @@ export type {
   ApiErrorBody,
   ApiErrorEnvelope,
 } from "./types.js";
+
+// Realtime
+export { RealtimeResource, RealtimeSession, RealtimeError } from "./resources/realtime.js";
+export type { RealtimeConnectParams, RealtimeMessage } from "./resources/realtime.js";
