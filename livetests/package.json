@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
-    "meshapi-node-sdk": "file:.."
+    "meshapi-node-sdk": "file:..",
+    "ws": "^8.18.0"
   },
   "scripts": {
     "test:models": "node --test test-models.js",
@@ -14,6 +15,7 @@
     "test:errors": "node --test test-errors.js",
     "test:feature": "node --test test-feature-matrix.js",
     "test:rag": "node --test test-rag.js",
-    "test:all": "node --test test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js"
+    "test:realtime": "node --test test-realtime.js",
+    "test:all": "node --test --test-reporter=spec test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js test-realtime.js"
   }
 }

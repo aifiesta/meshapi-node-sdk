@@ -92,10 +92,11 @@ Create `node/.env.livetest` (read automatically by `config.js`) or export the va
 | `MESHAPI_BASE_URL` | No | `http://localhost:8000` | Base URL of the MeshAPI gateway |
 | `MESHAPI_TOKEN` | **Yes** | hardcoded dev key | Data-plane API key (`rsk_...`) |
 | `MESHAPI_MODEL` | No | `openai/gpt-4o-mini` | Primary model used in chat/stream tests |
-| `MESHAPI_SECOND_MODEL` | No | `anthropic/claude-haiku-4-5` | Second model for compare tests |
+| `MESHAPI_SECOND_MODEL` | No | `anthropic/claude-haiku-4.5` | Second model for compare tests |
 | `MESHAPI_EMBEDDINGS_MODEL` | No | `openai/text-embedding-3-small` | Model used in embeddings tests |
 | `MESHAPI_IMAGE_GEN_MODEL` | No | _(skipped if unset)_ | Image generation model; test skipped if blank |
 | `MESHAPI_IMAGE_URL` | No | _(skipped if unset)_ | Publicly accessible image URL for vision tests |
+| `MESHAPI_REALTIME_MODEL` | No | `openai/gpt-realtime-mini` | Realtime-capable model used in WebSocket live tests |
 
 Example `node/.env.livetest`:
 
@@ -149,6 +150,7 @@ node --test test-rag.js
 | `test-errors.js` | 401/404 error handling |
 | `test-feature-matrix.js` | Cross-model feature matrix |
 | `test-rag.js` | RAG upload → embed → list → search |
+| `test-realtime.js` | WebSocket connect/close, session.created, session.update, error envelopes, on() callbacks, async iterator |
 
 ### RAG live test notes
 
