@@ -643,3 +643,80 @@ export interface ImageGenerationChunk {
   data: ImageItem[];
   status?: string;
 }
+
+// ── Video generation ──────────────────────────────────────────────────────────
+
+export type VideoTaskStatus = "queued" | "running" | "cancelled" | "succeeded" | "failed" | "expired";
+
+export interface VideoContentItem {
+  type: string;
+  text?: string;
+  image_url?: { url: string; role?: string };
+  video_url?: { url: string; role?: string };
+  audio_url?: { url: string; role?: string };
+  draft_task?: { id: string };
+  role?: string;
+}
+
+export interface VideoGenerationParams {
+  model: string;
+  content: VideoContentItem[];
+  callback_url?: string;
+  return_last_frame?: boolean;
+  service_tier?: string;
+  execution_expires_after?: number;
+  generate_audio?: boolean;
+  draft?: boolean;
+  resolution?: string;
+  ratio?: string;
+  duration?: number;
+  frames?: number;
+  seed?: number;
+  camera_fixed?: boolean;
+  watermark?: boolean;
+  safety_identifier?: string;
+  priority?: number;
+}
+
+export interface CreateVideoGenerationResponse {
+  id: string;
+}
+
+export interface VideoTaskError {
+  code: string;
+  message: string;
+}
+
+export interface VideoTaskContent {
+  video_url?: string;
+  last_frame_url?: string;
+}
+
+export interface VideoTaskUsage {
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export interface VideoTaskResponse {
+  id: string;
+  model?: string;
+  status: VideoTaskStatus;
+  error?: VideoTaskError;
+  created_at?: number;
+  updated_at?: number;
+  content?: VideoTaskContent;
+  seed?: number;
+  resolution?: string;
+  ratio?: string;
+  duration?: number;
+  frames?: number;
+  framespersecond?: number;
+  generate_audio?: boolean;
+  safety_identifier?: string;
+  priority?: number;
+  draft?: boolean;
+  draft_task_id?: string;
+  service_tier?: string;
+  execution_expires_after?: number;
+  usage?: VideoTaskUsage;
+}

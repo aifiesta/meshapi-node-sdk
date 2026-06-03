@@ -8,6 +8,7 @@ import { ModelsResource } from "./resources/models.js";
 import { ResponsesResource } from "./resources/responses.js";
 import { TemplatesResource } from "./resources/templates.js";
 import { ImagesResource } from "./resources/images.js";
+import { VideosResource } from "./resources/videos.js";
 import { RagResource } from "./resources/rag.js";
 import { RealtimeResource } from "./resources/realtime.js";
 
@@ -74,6 +75,29 @@ export class MeshAPI {
   readonly compare: CompareResource;
   readonly batches: BatchesResource;
   readonly images: ImagesResource;
+  /**
+   * Video generation namespace — BytePlus Seedance models.
+   * Requires a data-plane API key (`rsk_...`).
+   *
+   * Video generation is async: `create` returns a task ID; poll `get` until
+   * `status` is `succeeded`, `failed`, or `expired`.
+   *
+   * @example
+   * ```ts
+   * const task = await client.videos.create({
+   *   model: "byteplus/seedance-1-5-pro-251215",
+   *   content: [{ type: "text", text: "A cat walking in a garden." }],
+   * });
+   * // Poll until done
+   * let result = await client.videos.get(task.id);
+   * while (result.status === "queued" || result.status === "running") {
+   *   await new Promise(r => setTimeout(r, 5000));
+   *   result = await client.videos.get(task.id);
+   * }
+   * console.log(result.content?.video_url);
+   * ```
+   */
+  readonly videos: VideosResource;
   readonly rag: RagResource;
 
   /**
@@ -122,6 +146,7 @@ export class MeshAPI {
     this.models = new ModelsResource(http);
     this.templates = new TemplatesResource(http);
     this.images = new ImagesResource(http);
+    this.videos = new VideosResource(http);
     this.rag = new RagResource(http);
     this.realtime = new RealtimeResource(config);
   }
@@ -193,6 +218,16 @@ export type {
   ImageGenerationResponse,
   ImageItem,
   ImageUsage,
+
+  // Video generation
+  VideoTaskStatus,
+  VideoContentItem,
+  VideoGenerationParams,
+  CreateVideoGenerationResponse,
+  VideoTaskError,
+  VideoTaskContent,
+  VideoTaskUsage,
+  VideoTaskResponse,
 
   // Templates
   TemplateSummary,

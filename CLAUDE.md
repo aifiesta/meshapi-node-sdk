@@ -26,7 +26,8 @@ node/
 │       ├── batches.ts     # /v1/batches
 │       ├── models.ts      # /v1/models
 │       ├── templates.ts   # /v1/templates
-│       └── images.ts      # /v1/images/generations
+│       ├── images.ts      # /v1/images/generations
+│       └── videos.ts      # /v1/video/generations (BytePlus Seedance async)
 ├── tests/                 # Unit tests (contract, errors, SSE)
 ├── livetests/             # Live tests against a real backend
 ├── tsconfig.json
@@ -97,6 +98,7 @@ Create `node/.env.livetest` (read automatically by `config.js`) or export the va
 | `MESHAPI_IMAGE_GEN_MODEL` | No | _(skipped if unset)_ | Image generation model; test skipped if blank |
 | `MESHAPI_IMAGE_URL` | No | _(skipped if unset)_ | Publicly accessible image URL for vision tests |
 | `MESHAPI_REALTIME_MODEL` | No | `openai/gpt-realtime-mini` | Realtime-capable model used in WebSocket live tests |
+| `MESHAPI_VIDEO_GEN_MODEL` | No | _(skipped if unset)_ | BytePlus Seedance model for video generation tests; test skipped if blank |
 
 Example `node/.env.livetest`:
 
@@ -150,6 +152,7 @@ node --test test-rag.js
 | `test-errors.js` | 401/404 error handling |
 | `test-feature-matrix.js` | Cross-model feature matrix |
 | `test-rag.js` | RAG upload → embed → list → search |
+| `test-video.js` | Video generation create + poll lifecycle |
 | `test-realtime.js` | WebSocket connect/close, session.created, session.update, error envelopes, on() callbacks, async iterator |
 
 ### RAG live test notes
