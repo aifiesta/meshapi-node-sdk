@@ -121,6 +121,7 @@ export interface ChatCompletionParams {
   seed?: number;
   tools?: Tool[];
   tool_choice?: ToolChoice;
+  response_format?: Record<string, unknown>;
 
   // OpenRouter extensions
   /** Context compression transforms (e.g. ["middle-out"]) */
@@ -132,6 +133,14 @@ export interface ChatCompletionParams {
   user?: string;
   modality?: "text" | "image";
   image?: ImageOptions;
+  /**
+   * Max seconds for the MeshAPI backend to wait for the upstream provider.
+   * Overrides the server default (300 s). Use this for long-running requests
+   * that may exceed 5 minutes (e.g. extended reasoning chains).
+   * Note: this is separate from the SDK-level `timeoutMs` constructor option,
+   * which controls the HTTP client timeout.
+   */
+  timeout?: number;
   async_mode?: boolean;
   modalities?: Array<"text" | "audio">;
   audio?: AudioOutputOptions;
@@ -371,6 +380,8 @@ export interface ResponsesParams {
   response_format?: Record<string, unknown>;
   plugins?: unknown[];
   user?: string;
+  /** Max seconds for the backend to wait for the upstream provider. Overrides the server default (300 s). */
+  timeout?: number;
 }
 
 export interface ResponsesUsage {

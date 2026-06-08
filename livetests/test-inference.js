@@ -79,7 +79,7 @@ describe("compare", () => {
     assert.equal(result.results.length, 2, "expected two compare results");
   });
 
-  it("stream yields events", { skip: "server-side SQLAlchemy session concurrency issue when compare tests run back-to-back" }, async () => {
+  it("stream yields events", async () => {
     let events = 0;
     for await (const _event of client.compare.create({
       models: [MODEL, SECOND_MODEL],
