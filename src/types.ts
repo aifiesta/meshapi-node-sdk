@@ -121,6 +121,7 @@ export interface ChatCompletionParams {
   seed?: number;
   tools?: Tool[];
   tool_choice?: ToolChoice;
+  response_format?: Record<string, unknown>;
 
   // OpenRouter extensions
   /** Context compression transforms (e.g. ["middle-out"]) */
