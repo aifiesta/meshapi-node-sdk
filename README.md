@@ -165,9 +165,6 @@ const result = await client.audio.transcribe({
 });
 console.log(result.text);
 
-// Retrieve a previously submitted transcription
-const stored = await client.audio.getTranscription("transcription-id");
-
 // Translate audio to English
 const translated = await client.audio.translate({
   model: "sarvam/saaras:v3",
