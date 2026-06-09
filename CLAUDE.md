@@ -152,6 +152,35 @@ node --test test-rag.js
 | `test-rag.js` | RAG upload → embed → list → search |
 | `test-realtime.js` | WebSocket connect/close, session.created, session.update, error envelopes, on() callbacks, async iterator |
 
+### Available live test files (updated)
+
+| File | What it tests |
+|------|---------------|
+| `test-chat.js` | Chat completions (basic, tools, multi-turn) |
+| `test-stream.js` | Streaming chat and responses |
+| `test-models.js` | Model listing |
+| `test-templates.js` | Template CRUD lifecycle |
+| `test-inference.js` | Embeddings, responses |
+| `test-errors.js` | 401/404 error handling |
+| `test-feature-matrix.js` | Cross-model feature matrix |
+| `test-rag.js` | RAG upload → embed → list → search |
+| `test-realtime.js` | WebSocket connect/close, session lifecycle |
+| `test-audio.js` | TTS synthesize, voice listing |
+| `test-video.js` | Video list, generate → retrieve |
+
+---
+
+## Contribution checklist
+
+Every SDK change — however small — must include all of the following before merging:
+
+1. **Live tests** — add or update `livetests/test-<resource>.js` to cover the new/changed behaviour.
+2. **Unit tests** — if the change affects types, serialisation, or error handling, add a test in `tests/`.
+3. **README** — update `README.md` with a usage example for any new or changed public surface.
+4. **meshapi-docs** — open a follow-up PR (or note in the PR description) to update the [meshapi-docs](https://github.com/aifiesta/meshapi-docs) repository so the developer documentation stays in sync.
+
+---
+
 ### RAG live test notes
 
 The `"upload, embed, and search lifecycle"` test in `test-rag.js` does the following:

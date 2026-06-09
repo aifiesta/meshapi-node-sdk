@@ -41,6 +41,8 @@ Get a key at [meshapi.ai](https://meshapi.ai). Data-plane keys are prefixed `rsk
 | **Reasoning models** | First-class `responses` API with `reasoning.effort` and `max_output_tokens`. |
 | **Embeddings** | Drop-in OpenAI-compatible embeddings endpoint. |
 | **Multi-model compare** | Fire one prompt at N models in parallel and stream their replies side-by-side. |
+| **Audio** | Text-to-speech, speech-to-text, transcription translation, and voice listing. |
+| **Video** | Submit and poll async video generation tasks. |
 | **RAG** | Upload files, embed them, and run vector search — all through the same client. |
 | **Batches** | Async bulk inference jobs at discounted rates with inline request submission. |
 | **Prompt templates** | Server-stored prompts with `{{variable}}` slots. Update prompts without redeploying. |
@@ -138,6 +140,69 @@ const result = await client.embeddings.create({
   input: ["hello world", "goodbye world"],
 });
 console.log(result.data[0].embedding.length);
+```
+
+## Audio (TTS, STT, voices)
+
+```ts
+import { readFileSync, writeFileSync } from "fs";
+
+// Text-to-speech — returns Uint8Array of raw audio bytes
+const audio = await client.audio.synthesize({
+  input: "Hello from MeshAPI.",
+  model: "sarvam/bulbul:v2",
+  voice: "meera",
+});
+writeFileSync("output.wav", Buffer.from(audio));
+
+// Speech-to-text — submit a transcription job
+const audioFile = readFileSync("audio.wav");
+const result = await client.audio.transcribe({
+  model: "sarvam/saaras:v3",
+  file: audioFile,
+  file_name: "audio.wav",
+  language: "en",
+});
+console.log(result.text);
+
+// Retrieve a previously submitted transcription
+const stored = await client.audio.getTranscription("transcription-id");
+
+// Translate audio to English
+const translated = await client.audio.translate({
+  model: "sarvam/saaras:v3",
+  file: audioFile,
+  file_name: "audio.wav",
+});
+console.log(translated.text);
+
+// List available voices
+const voices = await client.audio.listVoices({ page_size: 10 });
+
+// Get a specific voice
+const voice = await client.audio.getVoice("voice-id");
+```
+
+## Video generation
+
+```ts
+// Submit a video generation task
+const task = await client.videos.generate({
+  model: "byteplus/dreamina-seedance-2-0",
+  content: [{ type: "text", text: "A serene mountain lake at sunrise" }],
+});
+console.log(`Task ID: ${task.id}`);
+
+// Poll until complete
+while (true) {
+  const status = await client.videos.retrieve(task.id);
+  if (status.status === "succeeded" || status.status === "failed") break;
+  await new Promise(r => setTimeout(r, 5_000));
+}
+
+// List past generation tasks
+const listing = await client.videos.list({ limit: 20 });
+console.log(`${listing.total} total tasks`);
 ```
 
 ## Image generation
@@ -362,6 +427,13 @@ import type {
   RagFileStatus, RagFileListResponse,
   BulkEmbedRequest, BulkEmbedResponse,
   SearchRequest, SearchResponse, SearchResult,
+  // audio
+  SpeechParams, TranscriptionParams, TranscriptionTranslateParams,
+  TranscriptionResponse, ListVoicesParams,
+  // video
+  VideoGenerationParams, VideoContentItem,
+  CreateVideoGenerationResponse, VideoTaskResponse, VideoTaskListResponse,
+  ListVideoGenerationsParams,
   // models
   ModelInfo, ModelPricing,
   // templates
