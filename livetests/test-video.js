@@ -2,7 +2,7 @@ import { MeshAPI } from "meshapi-node-sdk";
 import { config } from "./config.js";
 
 const client = new MeshAPI(config);
-const VIDEO_MODEL = process.env.MESHAPI_VIDEO_GEN_MODEL ?? "";
+const VIDEO_MODEL = process.env.MESHAPI_VIDEO_GEN_MODEL ?? "byteplus/dreamina-seedance-2-0";
 
 async function testVideoList() {
   const listing = await client.videos.list({ limit: 5 });
@@ -11,10 +11,6 @@ async function testVideoList() {
 }
 
 async function testVideoGenerateAndRetrieve() {
-  if (!VIDEO_MODEL) {
-    console.log("[SKIP] videos.generate — MESHAPI_VIDEO_GEN_MODEL not set");
-    return;
-  }
   const resp = await client.videos.generate({
     model: VIDEO_MODEL,
     content: [{ type: "text", text: "A serene mountain lake at sunrise" }],
