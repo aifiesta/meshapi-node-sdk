@@ -10,6 +10,8 @@ import { TemplatesResource } from "./resources/templates.js";
 import { ImagesResource } from "./resources/images.js";
 import { RagResource } from "./resources/rag.js";
 import { RealtimeResource } from "./resources/realtime.js";
+import { AudioResource } from "./resources/audio.js";
+import { VideosResource } from "./resources/videos.js";
 
 // ── Main client ───────────────────────────────────────────────────────────────
 
@@ -111,6 +113,8 @@ export class MeshAPI {
    * ```
    */
   readonly realtime: RealtimeResource;
+  readonly audio: AudioResource;
+  readonly videos: VideosResource;
 
   constructor(config: MeshAPIConfig) {
     const http = new HttpClient(config);
@@ -124,6 +128,8 @@ export class MeshAPI {
     this.images = new ImagesResource(http);
     this.rag = new RagResource(http);
     this.realtime = new RealtimeResource(config);
+    this.audio = new AudioResource(http);
+    this.videos = new VideosResource(http);
   }
 }
 
@@ -217,6 +223,26 @@ export type {
   // Errors (wire types)
   ApiErrorBody,
   ApiErrorEnvelope,
+
+  // Audio
+  SpeechParams,
+  TranscriptionParams,
+  TranscriptionTranslateParams,
+  TranscriptionResponse,
+  ListVoicesParams,
+  VoiceSettings,
+  PronunciationDictionaryLocator,
+
+  // Video
+  VideoContentItem,
+  VideoGenerationParams,
+  CreateVideoGenerationResponse,
+  VideoTaskError,
+  VideoTaskContent,
+  VideoTaskUsage,
+  VideoTaskResponse,
+  ListVideoGenerationsParams,
+  VideoTaskListResponse,
 } from "./types.js";
 
 // Realtime

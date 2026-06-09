@@ -17,6 +17,8 @@
     "test:rag": "node --test test-rag.js",
     "test:realtime": "node --test test-realtime.js",
     "test:structured-output": "node --test test-structured-output.js",
-    "test:all": "node --test --test-reporter=spec test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js test-realtime.js test-structured-output.js"
+    "test:audio": "node --test test-audio.js",
+    "test:video": "node --test test-video.js",
+    "test:all": "node --test --test-reporter=spec test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js test-realtime.js test-structured-output.js test-audio.js test-video.js"
   }
 }

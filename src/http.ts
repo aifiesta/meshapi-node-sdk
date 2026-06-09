@@ -91,6 +91,71 @@ export class HttpClient {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  async postBytes(path: string, body: unknown, opts?: RequestOptions): Promise<Uint8Array> {
+    const response = await this.requestRaw("POST", path, body, opts);
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  async postMultipart<T>(
+    path: string,
+    fields: Record<string, string | string[]>,
+    file?: { name: string; data: Uint8Array | Buffer; contentType?: string },
+    opts?: RequestOptions,
+  ): Promise<T> {
+    const signal = this.buildSignal(opts);
+    const form = new FormData();
+    for (const [key, value] of Object.entries(fields)) {
+      if (Array.isArray(value)) {
+        for (const item of value) form.append(key, item);
+      } else {
+        form.append(key, value);
+      }
+    }
+    if (file) {
+      const blob = new Blob([file.data as BlobPart], { type: file.contentType ?? "application/octet-stream" });
+      form.append("file", blob, file.name);
+    }
+
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+      Accept: "application/json",
+      [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
+      // Do NOT set Content-Type — fetch sets it automatically with the multipart boundary
+    };
+
+    let attempt = 0;
+    while (true) {
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers,
+        body: form,
+        signal: signal as AbortSignal,
+      });
+
+      if (RETRY_STATUS_CODES.has(response.status) && attempt < this.maxRetries) {
+        const delay = this.computeDelay(attempt, this.getRetryAfter(response));
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        attempt++;
+        continue;
+      }
+
+      if (!response.ok) {
+        throw await MeshAPIApiError.fromResponse(response);
+      }
+
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      const ct = response.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        return (await response.text()) as unknown as T;
+      }
+
+      return response.json() as Promise<T>;
+    }
+  }
+
   /**
    * Initiate a streaming request and return the raw Response.
    * The timeout signal here covers only the initial connection (TTFB);
