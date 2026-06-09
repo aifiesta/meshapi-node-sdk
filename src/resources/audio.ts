@@ -23,10 +23,10 @@ export class AudioResource {
     opts?: RequestOptions & { filename?: string },
   ): Promise<TranscriptionResponse> {
     const { filename = "audio.mp3", ...reqOpts } = opts ?? {};
-    const fields: Record<string, string> = {};
+    const fields: Record<string, string | string[]> = {};
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null) {
-        fields[k] = Array.isArray(v) ? JSON.stringify(v) : String(v);
+        fields[k] = Array.isArray(v) ? (v as string[]) : String(v);
       }
     }
     return this.http.postMultipart<TranscriptionResponse>(

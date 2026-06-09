@@ -98,14 +98,18 @@ export class HttpClient {
 
   async postMultipart<T>(
     path: string,
-    fields: Record<string, string>,
+    fields: Record<string, string | string[]>,
     file?: { name: string; data: Uint8Array | Buffer; contentType?: string },
     opts?: RequestOptions,
   ): Promise<T> {
     const signal = this.buildSignal(opts);
     const form = new FormData();
     for (const [key, value] of Object.entries(fields)) {
-      form.append(key, value);
+      if (Array.isArray(value)) {
+        for (const item of value) form.append(key, item);
+      } else {
+        form.append(key, value);
+      }
     }
     if (file) {
       const blob = new Blob([file.data as BlobPart], { type: file.contentType ?? "application/octet-stream" });
@@ -116,7 +120,7 @@ export class HttpClient {
       Authorization: `Bearer ${this.token}`,
       Accept: "application/json",
       [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
-      // Do NOT set Content-Type — the browser/fetch will set it with the boundary
+      // Do NOT set Content-Type — fetch sets it automatically with the multipart boundary
     };
 
     let attempt = 0;
@@ -137,6 +141,15 @@ export class HttpClient {
 
       if (!response.ok) {
         throw await MeshAPIApiError.fromResponse(response);
+      }
+
+      if (response.status === 204) {
+        return undefined as T;
+      }
+
+      const ct = response.headers.get("content-type") ?? "";
+      if (!ct.includes("application/json")) {
+        return (await response.text()) as unknown as T;
       }
 
       return response.json() as Promise<T>;
