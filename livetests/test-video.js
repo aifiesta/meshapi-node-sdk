@@ -1,34 +1,28 @@
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { MeshAPI } from "meshapi-node-sdk";
-import { config } from "./config.js";
+import { BASE_URL, TOKEN } from "./config.js";
 
-const client = new MeshAPI(config);
+const client = new MeshAPI({ baseUrl: BASE_URL, token: TOKEN });
+
 const VIDEO_MODEL = process.env.MESHAPI_VIDEO_GEN_MODEL ?? "byteplus/dreamina-seedance-2-0";
 
-async function testVideoList() {
-  const listing = await client.videos.list({ limit: 5 });
-  console.assert(Array.isArray(listing.data), "Expected data array");
-  console.log(`[PASS] videos.list -> total=${listing.total}, items=${listing.data.length}`);
-}
-
-async function testVideoGenerateAndRetrieve() {
-  const resp = await client.videos.generate({
-    model: VIDEO_MODEL,
-    content: [{ type: "text", text: "A serene mountain lake at sunrise" }],
+describe("audio (video generations)", () => {
+  it("list returns paginated response", async () => {
+    const listing = await client.videos.list({ limit: 5 });
+    assert.ok(Array.isArray(listing.data), "expected data array");
+    assert.ok(typeof listing.total === "number", "expected total");
   });
-  console.assert(resp.id, "Expected task id");
-  console.log(`[PASS] videos.generate -> task_id=${resp.id}`);
 
-  const task = await client.videos.retrieve(resp.id);
-  console.assert(task.id === resp.id, "Task id mismatch");
-  console.log(`[PASS] videos.retrieve -> status=${task.status}`);
-}
+  it("generate submits task and retrieve returns matching id", async () => {
+    const resp = await client.videos.generate({
+      model: VIDEO_MODEL,
+      content: [{ type: "text", text: "A serene mountain lake at sunrise" }],
+    });
+    assert.ok(resp.id, "expected task id");
 
-async function main() {
-  await testVideoList();
-  await testVideoGenerateAndRetrieve();
-}
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
+    const task = await client.videos.retrieve(resp.id);
+    assert.equal(task.id, resp.id, "task id mismatch");
+    assert.ok(task.status, "expected status");
+  });
 });
