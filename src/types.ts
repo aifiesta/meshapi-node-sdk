@@ -654,3 +654,188 @@ export interface ImageGenerationChunk {
   data: ImageItem[];
   status?: string;
 }
+
+// ── Audio ─────────────────────────────────────────────────────────────────────
+
+export interface VoiceSettings {
+  stability?: number;
+  similarity_boost?: number;
+  style?: number;
+  use_speaker_boost?: boolean;
+  speed?: number;
+}
+
+export interface PronunciationDictionaryLocator {
+  pronunciation_dictionary_id: string;
+  version_id: string;
+}
+
+export interface SpeechParams {
+  input: string;
+  model?: string;
+  voice?: string;
+  stream?: boolean;
+  response_format?: string;
+  language_code?: string;
+  voice_settings?: VoiceSettings;
+  pronunciation_dictionary_locators?: PronunciationDictionaryLocator[];
+  seed?: number;
+  previous_text?: string;
+  next_text?: string;
+  previous_request_ids?: string[];
+  next_request_ids?: string[];
+  apply_text_normalization?: string;
+  apply_language_text_normalization?: boolean;
+  use_pvc_as_ivc?: boolean;
+  enable_logging?: boolean;
+  optimize_streaming_latency?: number;
+  speaker?: string;
+  target_language_code?: string;
+  pitch?: number;
+  pace?: number;
+  loudness?: number;
+  speech_sample_rate?: number;
+  enable_preprocessing?: boolean;
+}
+
+export interface TranscriptionParams {
+  model: string;
+  language_code?: string;
+  tag_audio_events?: boolean;
+  num_speakers?: number;
+  timestamps_granularity?: string;
+  diarize?: boolean;
+  diarization_threshold?: number;
+  additional_formats?: string;
+  file_format?: string;
+  cloud_storage_url?: string;
+  source_url?: string;
+  webhook?: boolean;
+  webhook_id?: string;
+  temperature?: number;
+  seed?: number;
+  use_multi_channel?: boolean;
+  webhook_metadata?: string;
+  entity_detection?: string;
+  no_verbatim?: boolean;
+  detect_speaker_roles?: boolean;
+  entity_redaction?: string;
+  entity_redaction_mode?: string;
+  keyterms?: string[];
+  with_timestamps?: boolean;
+  debug_mode?: boolean;
+}
+
+export interface TranscriptionTranslateParams {
+  model?: string;
+  prompt?: string;
+}
+
+export interface TranscriptionResponse {
+  text: string;
+}
+
+export interface ListVoicesParams {
+  next_page_token?: string;
+  page_size?: number;
+  search?: string;
+  sort?: string;
+  sort_direction?: string;
+  voice_type?: string;
+  category?: string;
+  include_total_count?: boolean;
+  voice_ids?: string[];
+}
+
+// ── Video ─────────────────────────────────────────────────────────────────────
+
+export interface VideoContentItem {
+  type: string;
+  text?: string;
+  image_url?: Record<string, unknown>;
+  video_url?: Record<string, unknown>;
+  audio_url?: Record<string, unknown>;
+  draft_task?: Record<string, unknown>;
+  role?: string;
+}
+
+export interface VideoGenerationParams {
+  model: string;
+  content: VideoContentItem[];
+  callback_url?: string;
+  return_last_frame?: boolean;
+  service_tier?: string;
+  execution_expires_after?: number;
+  generate_audio?: boolean;
+  draft?: boolean;
+  resolution?: string;
+  ratio?: string;
+  duration?: number;
+  frames?: number;
+  seed?: number;
+  camera_fixed?: boolean;
+  watermark?: boolean;
+  safety_identifier?: string;
+  priority?: number;
+}
+
+export interface CreateVideoGenerationResponse {
+  id: string;
+}
+
+export interface VideoTaskError {
+  code: string;
+  message: string;
+}
+
+export interface VideoTaskContent {
+  video_url?: string;
+  last_frame_url?: string;
+}
+
+export interface VideoTaskUsage {
+  completion_tokens: number;
+  total_tokens: number;
+}
+
+export interface VideoTaskResponse {
+  id: string;
+  status: string;
+  model?: string;
+  error?: VideoTaskError;
+  created_at?: number;
+  updated_at?: number;
+  content?: VideoTaskContent;
+  seed?: number;
+  resolution?: string;
+  ratio?: string;
+  duration?: number;
+  frames?: number;
+  framespersecond?: number;
+  generate_audio?: boolean;
+  safety_identifier?: string;
+  priority?: number;
+  draft?: boolean;
+  draft_task_id?: string;
+  service_tier?: string;
+  execution_expires_after?: number;
+  usage?: VideoTaskUsage;
+}
+
+export interface ListVideoGenerationsParams {
+  status?: string;
+  model?: string;
+  created_after?: string;
+  created_before?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface VideoTaskListResponse {
+  object?: string;
+  data: VideoTaskResponse[];
+  has_more: boolean;
+  total: number;
+  limit: number;
+  offset: number;
+}
