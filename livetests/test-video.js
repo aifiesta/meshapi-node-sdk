@@ -7,7 +7,7 @@ const client = new MeshAPI({ baseUrl: BASE_URL, token: TOKEN });
 
 const VIDEO_MODEL = process.env.MESHAPI_VIDEO_GEN_MODEL ?? "byteplus/dreamina-seedance-2-0";
 
-describe("audio (video generations)", () => {
+describe("video generations", () => {
   it("list returns paginated response", async () => {
     const listing = await client.videos.list({ limit: 5 });
     assert.ok(Array.isArray(listing.data), "expected data array");
