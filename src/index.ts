@@ -230,6 +230,8 @@ export type {
   TranscriptionTranslateParams,
   TranscriptionResponse,
   ListVoicesParams,
+  Voice,
+  VoicesResponse,
   VoiceSettings,
   PronunciationDictionaryLocator,
 
