@@ -20,13 +20,12 @@ node/
 │       ├── chat.ts        # /v1/chat/completions
 │       ├── responses.ts   # /v1/responses
 │       ├── embeddings.ts  # /v1/embeddings
-│       ├── compare.ts     # /v1/compare
-│       ├── files.ts       # /v1/files (batch file objects)
-│       ├── rag.ts         # /v1/files RAG endpoints (upload, embed, search)
+│       ├── compare.ts     # /v1/chat/compare
+│       ├── rag.ts         # /v1/files RAG endpoints (upload, list, get status, embed, search)
 │       ├── batches.ts     # /v1/batches
 │       ├── models.ts      # /v1/models
 │       ├── templates.ts   # /v1/templates
-│       └── images.ts      # /v1/images/generations
+│       └── images.ts      # /v1/images/generations, /v1/images/edits
 ├── tests/                 # Unit tests (contract, errors, SSE)
 ├── livetests/             # Live tests against a real backend
 ├── tsconfig.json
@@ -165,9 +164,10 @@ node --test test-rag.js
 | `test-feature-matrix.js` | Cross-model feature matrix |
 | `test-rag.js` | RAG upload → embed → list → search |
 | `test-realtime.js` | WebSocket connect/close, session lifecycle |
-| `test-audio.js` | TTS synthesize, voice listing |
+| `test-audio.js` | TTS synthesize, voice listing, translations |
 | `test-video.js` | Video list, generate → retrieve |
 | `test-compare.js` | Non-streaming compare, streaming compare |
+| `test-moderations.js` | Moderation classify: text and multimodal input |
 
 ---
 

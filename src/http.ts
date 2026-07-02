@@ -70,6 +70,17 @@ export class HttpClient {
     this.maxRetries = config.maxRetries ?? 3;
   }
 
+  /**
+   * Issue a raw fetch (no auth headers, no retry, no JSON parsing) through the
+   * configured `fetchImpl`. Used by `RagResource.uploadFile` to PUT file bytes
+   * to a signed URL while still honouring `opts.signal` / `opts.timeoutMs` and
+   * any custom fetch implementation supplied via `MeshAPIConfig.fetch`.
+   */
+  async rawFetch(url: string, init: RequestInit, opts?: RequestOptions): Promise<Response> {
+    const signal = this.buildSignal(opts);
+    return this.fetchImpl(url, { ...init, signal: signal as AbortSignal });
+  }
+
   async get<T>(path: string, opts?: RequestOptions): Promise<T> {
     return this.request<T>("GET", path, undefined, opts);
   }

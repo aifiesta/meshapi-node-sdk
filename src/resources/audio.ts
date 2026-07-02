@@ -1,5 +1,6 @@
 import type { HttpClient } from "../http.js";
 import type {
+  AudioTranslationsParams,
   ListVoicesParams,
   RequestOptions,
   SpeechParams,
@@ -61,6 +62,36 @@ export class AudioResource {
     }
     return this.http.postMultipart<TranscriptionResponse>(
       "/v1/audio/transcriptions/translate",
+      fields,
+      { name: filename, data: file },
+      reqOpts,
+    );
+  }
+
+  /**
+   * POST /v1/audio/translations — standalone OpenAI-compatible translate endpoint.
+   *
+   * Translates speech in any language to English text. This is a DISTINCT endpoint
+   * from `translate()` which posts to `/v1/audio/transcriptions/translate`.
+   *
+   * @param file  Raw audio bytes to upload.
+   * @param params  Must include `model`; `prompt`, `response_format`, and `temperature` are optional.
+   * @param opts  Per-request options including optional `filename` for the upload part.
+   */
+  translations(
+    file: Uint8Array | Buffer,
+    params: AudioTranslationsParams,
+    opts?: RequestOptions & { filename?: string },
+  ): Promise<TranscriptionResponse> {
+    const { filename = "audio.mp3", ...reqOpts } = opts ?? {};
+    const fields: Record<string, string> = {};
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined && v !== null) {
+        fields[k] = String(v);
+      }
+    }
+    return this.http.postMultipart<TranscriptionResponse>(
+      "/v1/audio/translations",
       fields,
       { name: filename, data: file },
       reqOpts,

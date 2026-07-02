@@ -65,12 +65,17 @@ export class RagResource {
 
     const upload = await this.initUpload(initReq, opts);
 
-    const resp = await fetch(upload.signed_url, {
-      method: "PUT",
-      // Cast required: Uint8Array<ArrayBufferLike> vs BodyInit generic mismatch in strict TS.
-      body: params.content as BodyInit,
-      headers: { "Content-Type": params.mime_type },
-    });
+    const resp = await this.http.rawFetch(
+      upload.signed_url,
+      {
+        method: "PUT",
+        // Cast required: Uint8Array<ArrayBufferLike> vs BodyInit generic mismatch in strict TS.
+        body: params.content as BodyInit,
+        // Signed URLs must NOT carry the Authorization header — only Content-Type.
+        headers: { "Content-Type": params.mime_type },
+      },
+      opts,
+    );
 
     if (!resp.ok) {
       throw new Error(`rag: PUT signed URL returned HTTP ${resp.status}`);
