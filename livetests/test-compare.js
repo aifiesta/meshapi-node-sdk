@@ -39,3 +39,36 @@ describe("compare (streaming)", () => {
     assert.ok(count > 0, "expected at least one streaming event");
   });
 });
+
+describe("compare (synthesis + overrides)", () => {
+  it("exercises the synthesis path (skip_comparison: false)", async () => {
+    const result = await client.compare.create({
+      models: [MODEL, SECOND_MODEL],
+      messages: [{ role: "user", content: "In one sentence, what is TCP?" }],
+      comparison_instructions: "Briefly state which answer is clearer.",
+      skip_comparison: false,
+      max_tokens: 60,
+    });
+    assert.ok(result.comparison_id);
+    assert.equal(result.results.length, 2);
+    // When a per-model answer succeeded and the comparison model did not fall
+    // back, a synthesized comparison must be present with usage.
+    const anyContent = result.results.some((r) => r.content);
+    if (anyContent && !result.comparison_fallback_used) {
+      assert.ok(result.comparison, "expected a synthesized comparison");
+      assert.ok(result.comparison_model, "expected comparison_model to be reported");
+      assert.ok(result.comparison_usage, "expected comparison_usage to be populated");
+    }
+  });
+
+  it("accepts per-model overrides", async () => {
+    const result = await client.compare.create({
+      models: [MODEL, SECOND_MODEL],
+      messages: [{ role: "user", content: "Say hi in one word." }],
+      model_overrides: [{ model: MODEL, temperature: 0, max_tokens: 10 }],
+      skip_comparison: true,
+      max_tokens: 20,
+    });
+    assert.equal(result.results.length, 2, "overrides must not drop any model from the fan-out");
+  });
+});
