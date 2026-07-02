@@ -6,6 +6,8 @@ import type {
   TranscriptionParams,
   TranscriptionResponse,
   TranscriptionTranslateParams,
+  Voice,
+  VoicesResponse,
 } from "../types.js";
 
 export class AudioResource {
@@ -66,7 +68,7 @@ export class AudioResource {
   }
 
   /** GET /v1/audio/voices */
-  listVoices(params?: ListVoicesParams, opts?: RequestOptions): Promise<unknown> {
+  listVoices(params?: ListVoicesParams, opts?: RequestOptions): Promise<VoicesResponse> {
     const query = new URLSearchParams();
     if (params) {
       for (const [k, v] of Object.entries(params)) {
@@ -84,7 +86,7 @@ export class AudioResource {
   }
 
   /** GET /v1/audio/voices/{voice_id} */
-  getVoice(voiceId: string, opts?: RequestOptions): Promise<unknown> {
+  getVoice(voiceId: string, opts?: RequestOptions): Promise<Voice> {
     return this.http.get(`/v1/audio/voices/${voiceId}`, opts);
   }
 }

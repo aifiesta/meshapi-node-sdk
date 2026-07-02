@@ -167,6 +167,7 @@ node --test test-rag.js
 | `test-realtime.js` | WebSocket connect/close, session lifecycle |
 | `test-audio.js` | TTS synthesize, voice listing |
 | `test-video.js` | Video list, generate → retrieve |
+| `test-compare.js` | Non-streaming compare, streaming compare |
 
 ---
 
@@ -180,6 +181,40 @@ Every SDK change — however small — must include all of the following before 
 4. **meshapi-docs** — open a follow-up PR (or note in the PR description) to update the [meshapi-docs](https://github.com/aifiesta/meshapi-docs) repository so the developer documentation stays in sync.
 
 ---
+
+---
+
+## Release
+
+Releases are triggered by pushing a `v*` git tag. The `publish.yml` workflow builds the dist/ with tsup and publishes to npm using the `NPM_TOKEN` secret.
+
+### Release checklist
+
+1. **Bump the version** in `package.json`:
+   ```json
+   "version": "0.1.1"
+   ```
+
+2. **Commit the version bump**:
+   ```bash
+   git add package.json
+   git commit -m "chore: bump version to 0.1.1"
+   ```
+
+3. **Tag and push**:
+   ```bash
+   git tag v0.1.1
+   git push origin main
+   git push origin v0.1.1
+   ```
+
+4. **Monitor the workflow** at `Actions → Publish to npm`.
+
+5. **Verify** the new version is live:
+   ```bash
+   npm install meshapi-node-sdk@0.1.1
+   node -e "const { MeshAPI } = require('meshapi-node-sdk'); console.log('ok')"
+   ```
 
 ### RAG live test notes
 
