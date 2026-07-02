@@ -5,7 +5,9 @@ import { BASE_URL, TOKEN } from "./config.js";
 
 const client = new MeshAPI({ baseUrl: BASE_URL, token: TOKEN });
 
-const VIDEO_MODEL = process.env.MESHAPI_VIDEO_GEN_MODEL ?? "byteplus/dreamina-seedance-2-0";
+// No hardcoded fallback: video generation is costly, so the generate test only
+// runs when a model is explicitly configured (skipped in CI by default).
+const VIDEO_MODEL = process.env.MESHAPI_VIDEO_GEN_MODEL;
 
 describe("video generations", () => {
   it("list returns paginated response", async () => {
@@ -14,7 +16,10 @@ describe("video generations", () => {
     assert.ok(typeof listing.total === "number", "expected total");
   });
 
-  it("generate submits task and retrieve returns matching id", async () => {
+  it("generate submits task and retrieve returns matching id", async (t) => {
+    if (!VIDEO_MODEL) {
+      return t.skip("set MESHAPI_VIDEO_GEN_MODEL to run video generation (costly; skipped in CI by default)");
+    }
     const resp = await client.videos.generate({
       model: VIDEO_MODEL,
       content: [{ type: "text", text: "A serene mountain lake at sunrise" }],

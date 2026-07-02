@@ -19,6 +19,13 @@
     "test:structured-output": "node --test test-structured-output.js",
     "test:audio": "node --test test-audio.js",
     "test:video": "node --test test-video.js",
-    "test:all": "node --test --test-reporter=spec test-models.js test-templates.js test-chat.js test-stream.js test-inference.js test-errors.js test-feature-matrix.js test-rag.js test-realtime.js test-structured-output.js test-audio.js test-video.js"
+    "test:compare": "node --test test-compare.js",
+    "test:moderations": "node --test test-moderations.js",
+    "test:web-search": "node --test test-web-search.js",
+    "test:router-select": "node --test test-router-select.js",
+    "test:tool-calling": "node --test test-tool-calling.js",
+    "test:images-edit": "node --test test-images-edit.js",
+    "test:responses": "node --test test-responses.js",
+    "test:all": "node --test --test-reporter=spec"
   }
 }
