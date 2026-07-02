@@ -20,15 +20,16 @@ export class BatchesResource {
     const query = new URLSearchParams();
     if (params.after) query.set("after", params.after);
     if (params.limit !== undefined) query.set("limit", String(params.limit));
-    const suffix = query.size ? `?${query.toString()}` : "";
+    const qs = query.toString();
+    const suffix = qs ? `?${qs}` : "";
     return this.http.get<BatchListResponse>(`/v1/batches${suffix}`, opts);
   }
 
   get(batchId: string, opts?: RequestOptions): Promise<BatchObject> {
-    return this.http.get<BatchObject>(`/v1/batches/${batchId}`, opts);
+    return this.http.get<BatchObject>(`/v1/batches/${encodeURIComponent(batchId)}`, opts);
   }
 
   cancel(batchId: string, opts?: RequestOptions): Promise<BatchObject> {
-    return this.http.post<BatchObject>(`/v1/batches/${batchId}/cancel`, {}, opts);
+    return this.http.post<BatchObject>(`/v1/batches/${encodeURIComponent(batchId)}/cancel`, {}, opts);
   }
 }

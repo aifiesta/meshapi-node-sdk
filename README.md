@@ -169,13 +169,21 @@ const result = await client.audio.transcribe({
 });
 console.log(result.text);
 
-// Translate audio to English
+// Translate audio to English (via /v1/audio/transcriptions/translate)
 const translated = await client.audio.translate({
   model: "sarvam/saaras:v3",
   file: audioFile,
   file_name: "audio.wav",
 });
 console.log(translated.text);
+
+// Standalone OpenAI-compatible translate (POST /v1/audio/translations)
+// Distinct from translate() above — use this for OpenAI-style compatibility.
+const translation = await client.audio.translations(audioFile, {
+  model: "openai/whisper-1",
+  prompt: "Optional context hint",
+});
+console.log(translation.text);
 
 // List available voices
 const voices = await client.audio.listVoices({ page_size: 10 });

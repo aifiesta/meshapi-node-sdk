@@ -32,7 +32,12 @@ export interface ContentPartImage {
 }
 
 export interface InputAudio {
-  data: string;
+  /** Base64-encoded audio data (one of data/uri/url is required). */
+  data?: string | null;
+  /** GCS or other cloud-storage URI for the audio. */
+  uri?: string | null;
+  /** Public URL for the audio. */
+  url?: string | null;
   format: "wav" | "mp3" | "aiff" | "aac" | "ogg" | "flac" | "m4a" | "pcm16" | "pcm24";
 }
 
@@ -41,7 +46,17 @@ export interface ContentPartAudio {
   input_audio: InputAudio;
 }
 
-export type ContentPart = ContentPartText | ContentPartImage | ContentPartAudio;
+export interface VideoUrl {
+  url: string;
+}
+
+export interface ContentPartVideo {
+  type: "video_url";
+  video_url: VideoUrl;
+  fps?: string | null;
+}
+
+export type ContentPart = ContentPartText | ContentPartImage | ContentPartAudio | ContentPartVideo;
 
 export interface ToolFunction {
   name: string;
@@ -63,6 +78,8 @@ export interface ToolCall {
   id: string;
   type: "function";
   function: ToolCallFunction;
+  /** Gemini thinking models echo this back and require it on subsequent turns. */
+  thought_signature?: string | null;
 }
 
 export type ToolChoice =
@@ -91,6 +108,8 @@ export interface ChatMessage {
   tool_call_id?: string;
   /** Present when role is "assistant" with tool use */
   tool_calls?: ToolCall[];
+  /** Reasoning details from thinking models (e.g. Gemini extended thinking). */
+  reasoning_details?: Record<string, unknown>[] | null;
 }
 
 export interface ChatCompletionParams {
@@ -133,6 +152,10 @@ export interface ChatCompletionParams {
   user?: string;
   modality?: "text" | "image";
   image?: ImageOptions;
+  /** Enable prompt caching for this request (reduces cost on repeated prompts). */
+  cache?: boolean | null;
+  /** Reasoning effort for thinking-capable models. */
+  reasoning_effort?: "high" | "medium" | "low" | "none" | null;
   /**
    * Max seconds for the MeshAPI backend to wait for the upstream provider.
    * Overrides the server default (300 s). Use this for long-running requests
@@ -213,14 +236,40 @@ export interface ModelPricing {
   prompt_usd_per_1k: string | null;
   /** Price per 1,000 completion tokens in USD (as decimal string) */
   completion_usd_per_1k: string | null;
-  /** Price per image (as decimal string) */
-  image_usd_per_image?: string | null;
   /** Discount percentage applied to this caller (as decimal string) */
   discount_pct?: string | null;
-  /** Discounted prompt price per 1k (as decimal string) */
-  prompt_usd_per_1k_discounted?: string | null;
-  /** Discounted completion price per 1k (as decimal string) */
-  completion_usd_per_1k_discounted?: string | null;
+  // All remaining pricing fields are optional strings per spec ModelPricing
+  pricing_unit?: string | null;
+  prompt_usd_per_1m?: string | null;
+  completion_usd_per_1m?: string | null;
+  image_output_usd_per_image?: string | null;
+  request_usd?: string | null;
+  long_context_input_usd_per_1m?: string | null;
+  long_context_output_usd_per_1m?: string | null;
+  cache_read_input_usd_per_1m?: string | null;
+  cache_write_input_usd_per_1m?: string | null;
+  cache_read_audio_input_usd_per_1m?: string | null;
+  long_context_cache_read_input_usd_per_1m?: string | null;
+  long_context_cache_write_input_usd_per_1m?: string | null;
+  batch_input_usd_per_1m?: string | null;
+  batch_output_usd_per_1m?: string | null;
+  training_usd_per_1m?: string | null;
+  fine_tuned_input_usd_per_1m?: string | null;
+  fine_tuned_output_usd_per_1m?: string | null;
+  audio_input_usd_per_1m?: string | null;
+  audio_output_usd_per_1m?: string | null;
+  transcription_usd_per_1m?: string | null;
+  cached_audio_input_usd_per_1m?: string | null;
+  cached_text_input_usd_per_1m?: string | null;
+  cache_hit_usd_per_1m?: string | null;
+  output_with_audio_usd_per_1m?: string | null;
+  output_with_video_usd_per_1m?: string | null;
+  image_input_usd_per_image?: string | null;
+  image_output_size?: string | null;
+  effective_date?: string | null;
+  deprecated_date?: string | null;
+  notes?: string | null;
+  source_url?: string | null;
 }
 
 export interface ModelInfo {
@@ -229,18 +278,48 @@ export interface ModelInfo {
   context_length: number | null;
   is_free: boolean;
   pricing: ModelPricing;
+  supports_thinking: boolean;
+  supports_completions_api: boolean;
+  supports_responses_api: boolean;
+  model_type: string;
+  input_modalities: string[];
+  output_modalities: string[];
+  // Optional fields per spec ModelOut
   description?: string | null;
-  supports_thinking?: boolean;
-  supports_completions_api?: boolean;
-  supports_responses_api?: boolean;
-  model_type?: string;
-  input_modalities?: string[];
-  output_modalities?: string[];
+  brand?: string | null;
+  /** @deprecated Use brand instead */
+  provider?: string | null;
+  supports_realtime?: boolean;
+  supports_embeddings?: boolean;
+  supports_tools?: boolean;
+  supports_structured_output?: boolean;
+  supports_system_prompt?: boolean;
+  supports_batching?: boolean;
+  supports_background_response?: boolean;
+  supports_video_generation?: boolean;
+  supports_image_edit?: boolean;
+  supports_image_inpaint?: boolean;
+  supports_image_outpaint?: boolean;
+  supports_image_mix?: boolean;
+  supports_image_reframe?: boolean;
+  supports_image_upscale?: boolean;
+  supports_image_remove_background?: boolean;
+  supports_image_reference?: boolean;
+  context_window?: number | null;
+  standard_context_threshold?: number | null;
+  realtime_session_max_tokens?: number | null;
+  realtime_max_concurrent_per_owner?: number | null;
+  is_composite?: boolean;
+  composite_models?: string[] | null;
 }
 
 export interface ListModelsParams {
   /** true = free models only, false = paid only, omit = all */
   free?: boolean;
+  /** Filter by model type */
+  type?: "text" | "embedding" | "image" | "audio" | "video";
+  /** Filter by model provider/brand */
+  provider?: string;
 }
 
 // ── Templates ─────────────────────────────────────────────────────────────────
@@ -263,6 +342,8 @@ export interface CreateTemplateParams {
   params?: Record<string, unknown>;
   /** Declared {{slot}} variable names for documentation */
   variables?: string[];
+  /** Team ID to assign this template to (org-scoped sharing). */
+  team_id?: string | null;
 }
 
 export interface UpdateTemplateParams {
@@ -314,14 +395,33 @@ export interface ProviderPreferences {
   data_collection?: "allow" | "deny";
 }
 
+export interface ImageEmbeddingUrl {
+  url: string;
+}
+
+export interface VideoEmbeddingUrl {
+  url: string;
+}
+
+export interface MultimodalEmbeddingInput {
+  type: "text" | "image_url" | "video_url";
+  text?: string | null;
+  image_url?: ImageEmbeddingUrl | null;
+  video_url?: VideoEmbeddingUrl | null;
+}
+
 export interface EmbeddingsParams {
   model?: string;
-  input: string | string[] | number[] | number[][];
+  input: string | string[] | number[] | number[][] | MultimodalEmbeddingInput[];
   dimensions?: number;
   encoding_format?: "float" | "base64";
   input_type?: string;
   provider?: string | ProviderPreferences;
   user?: string;
+  /** BytePlus multimodal inference prompt */
+  instructions?: string | null;
+  /** Sparse embedding settings e.g. { type: "enabled" } */
+  sparse_embedding?: Record<string, unknown> | null;
 }
 
 export interface EmbeddingItem {
@@ -378,10 +478,28 @@ export interface ResponsesParams {
   tools?: Array<ResponsesFunctionTool | BuiltinTool>;
   tool_choice?: string | Record<string, unknown>;
   response_format?: Record<string, unknown>;
-  plugins?: unknown[];
+  plugins?: unknown[] | null;
   user?: string;
   /** Max seconds for the backend to wait for the upstream provider. Overrides the server default (300 s). */
   timeout?: number;
+  /** Continue from a prior response — pass the prior response's id. */
+  previous_response_id?: string | null;
+  /** System-level instructions prepended before the input. */
+  instructions?: string | null;
+  /** Thinking/extended-reasoning configuration (e.g. { type: "enabled", budget_tokens: 5000 }). */
+  thinking?: Record<string, unknown> | null;
+  /** Prompt caching settings (e.g. { type: "ephemeral" }). */
+  caching?: Record<string, unknown> | null;
+  /** Whether to persist the response for later retrieval via GET /v1/responses. */
+  store?: boolean | null;
+  /** Additional output fields to include in the response (e.g. ["usage"]). */
+  include?: unknown[] | null;
+  /** Unix timestamp after which the stored response may be deleted. */
+  expire_at?: number | null;
+  /** Maximum number of tool calls per response turn (1–10). */
+  max_tool_calls?: number | null;
+  /** Context-window management policy (e.g. { type: "auto" }). */
+  context_management?: Record<string, unknown> | null;
 }
 
 export interface ResponsesUsage {
@@ -500,6 +618,11 @@ export interface BatchObject {
   created_at?: number | null;
   completed_at?: number | null;
   usage_synced?: boolean;
+  results?: Array<Record<string, unknown>>;
+  errors_detail?: Array<Record<string, unknown>>;
+  error_file_id?: string | null;
+  request_counts?: Record<string, unknown>;
+  metadata?: Record<string, unknown> | null;
   [key: string]: unknown;
 }
 
@@ -515,13 +638,28 @@ export interface BatchListResponse {
 
 export interface ImageGenerationParams {
   prompt: string;
-  model?: string;
+  model?: string | null;
   n?: number;
   size?: string;
   quality?: string;
   response_format?: "url" | "b64_json";
-  output_format?: "png" | "jpeg" | "webp";
+  output_format?: "png" | "jpeg" | "webp" | null;
   stream?: boolean;
+  // Additional spec fields (ImageGenerationRequest has 21 total)
+  aspect_ratio?: string | null;
+  resolution?: string | null;
+  output_compression?: number | null;
+  background?: "transparent" | "opaque" | "auto" | null;
+  moderation?: "low" | "auto" | null;
+  partial_images?: number | null;
+  /** Reference image(s) for image-conditioned generation (base64 or URL) */
+  image?: string | string[] | null;
+  seed?: number | null;
+  sequential_image_generation?: "auto" | "disabled" | null;
+  sequential_image_generation_options?: Record<string, unknown> | null;
+  guidance_scale?: number | null;
+  watermark?: boolean | null;
+  optimize_prompt_options?: Record<string, unknown> | null;
 }
 
 export interface ImageItem {
@@ -731,6 +869,18 @@ export interface TranscriptionTranslateParams {
   prompt?: string;
 }
 
+/** Parameters for POST /v1/audio/translations (standalone translate endpoint). */
+export interface AudioTranslationsParams {
+  /** Model ID to use for translation (required). */
+  model: string;
+  /** Optional hint/context prompt for the translation. */
+  prompt?: string | null;
+  /** Response format: "json" (default), "text", or "verbose_json". */
+  response_format?: string | null;
+  /** Sampling temperature in range 0–2 (higher = more random). */
+  temperature?: number | null;
+}
+
 export interface TranscriptionResponse {
   text: string;
 }
@@ -926,7 +1076,7 @@ export interface WebSearchResponse {
 
 export interface RouterSelectParams {
   messages: ChatMessage[];
-  api_type?: "completions";
+  api_type?: "completions" | "responses" | "embeddings";
   exclude_models?: string[];
 }
 
@@ -988,6 +1138,52 @@ export interface ResponsesListResponse {
   has_more?: boolean;
   first_id?: string | null;
   last_id?: string | null;
+}
+
+// ── Documents — POST /v1/documents/generate, GET /v1/documents, GET /v1/documents/{id} ──
+
+export type DocumentFormat = "pdf" | "docx" | "pptx" | "csv" | "xlsx";
+
+export interface GenerateDocumentRequest {
+  /** Output format of the generated document. */
+  format: DocumentFormat;
+  /** Prompt describing the document to generate (1–50000 chars). */
+  prompt: string;
+  /** Model to use; defaults to "google/gemini-2.5-flash-lite" server-side. */
+  model?: string;
+  /** Arbitrary key-value metadata to attach to the document. */
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface DocumentResponse {
+  document_id: string;
+  status: string;
+  format: string;
+  model: string;
+  title?: string | null;
+  download_url?: string | null;
+  expires_at?: string | null;
+  size_bytes?: number | null;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  total_tokens?: number | null;
+  failure_reason?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface DocumentListResponse {
+  documents: DocumentResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ListDocumentsParams {
+  /** Number of documents to return (1–200, default 50). */
+  limit?: number;
+  /** Number of documents to skip (>=0, default 0). */
+  offset?: number;
 }
 
 // ── Image edit — POST /v1/images/edits (JSON/base64 mode) ───────────────────────

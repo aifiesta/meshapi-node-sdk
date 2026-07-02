@@ -25,8 +25,12 @@ export class ModelsResource {
    * ```
    */
   async list(params?: ListModelsParams, opts?: RequestOptions): Promise<ModelInfo[]> {
-    const qs = params?.free !== undefined ? `?free=${params.free}` : "";
-    return this.http.get<ModelInfo[]>(`/v1/models${qs}`, opts);
+    const query = new URLSearchParams();
+    if (params?.free !== undefined) query.set("free", String(params.free));
+    if (params?.type !== undefined) query.set("type", params.type);
+    if (params?.provider !== undefined) query.set("provider", params.provider);
+    const qs = query.toString();
+    return this.http.get<ModelInfo[]>(qs ? `/v1/models?${qs}` : "/v1/models", opts);
   }
 
   /**
@@ -95,6 +99,9 @@ export class ModelsResource {
    * ```
    */
   async get(modelId: string, opts?: RequestOptions): Promise<ModelInfo> {
-    return this.http.get<ModelInfo>(`/v1/models/${modelId}`, opts);
+    // Encode each path segment while preserving literal "/" in composite model IDs
+    // (backend route is /v1/models/{model_id:path} so "/" is intentional)
+    const encodedId = modelId.split("/").map(encodeURIComponent).join("/");
+    return this.http.get<ModelInfo>(`/v1/models/${encodedId}`, opts);
   }
 }
