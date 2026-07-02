@@ -15,8 +15,6 @@ import { VideosResource } from "./resources/videos.js";
 import { ModerationsResource } from "./resources/moderations.js";
 import { WebResource } from "./resources/web-search.js";
 import { RouterResource } from "./resources/router-select.js";
-import { DocumentsResource } from "./resources/documents.js";
-
 // ── Main client ───────────────────────────────────────────────────────────────
 
 /**
@@ -129,9 +127,6 @@ export class MeshAPI {
   /** Auto Router select-only namespace — POST /v1/router/select (gated by AUTO_ROUTER_ENABLED). */
   readonly router: RouterResource;
 
-  /** Documents namespace — generate, list, retrieve AI-generated documents. */
-  readonly documents: DocumentsResource;
-
   constructor(config: MeshAPIConfig) {
     const http = new HttpClient(config);
     this.chat = new ChatResource(http);
@@ -149,7 +144,6 @@ export class MeshAPI {
     this.moderations = new ModerationsResource(http);
     this.web = new WebResource(http);
     this.router = new RouterResource(http);
-    this.documents = new DocumentsResource(http);
   }
 }
 
@@ -301,13 +295,6 @@ export type {
   // Image edit
   ImageRef,
   ImageEditParams,
-
-  // Documents
-  DocumentFormat,
-  GenerateDocumentRequest,
-  DocumentResponse,
-  DocumentListResponse,
-  ListDocumentsParams,
 } from "./types.js";
 
 // Realtime

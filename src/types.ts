@@ -1140,52 +1140,6 @@ export interface ResponsesListResponse {
   last_id?: string | null;
 }
 
-// ── Documents — POST /v1/documents/generate, GET /v1/documents, GET /v1/documents/{id} ──
-
-export type DocumentFormat = "pdf" | "docx" | "pptx" | "csv" | "xlsx";
-
-export interface GenerateDocumentRequest {
-  /** Output format of the generated document. */
-  format: DocumentFormat;
-  /** Prompt describing the document to generate (1–50000 chars). */
-  prompt: string;
-  /** Model to use; defaults to "google/gemini-2.5-flash-lite" server-side. */
-  model?: string;
-  /** Arbitrary key-value metadata to attach to the document. */
-  metadata?: Record<string, unknown> | null;
-}
-
-export interface DocumentResponse {
-  document_id: string;
-  status: string;
-  format: string;
-  model: string;
-  title?: string | null;
-  download_url?: string | null;
-  expires_at?: string | null;
-  size_bytes?: number | null;
-  prompt_tokens?: number | null;
-  completion_tokens?: number | null;
-  total_tokens?: number | null;
-  failure_reason?: string | null;
-  created_at?: string | null;
-  updated_at?: string | null;
-}
-
-export interface DocumentListResponse {
-  documents: DocumentResponse[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-export interface ListDocumentsParams {
-  /** Number of documents to return (1–200, default 50). */
-  limit?: number;
-  /** Number of documents to skip (>=0, default 0). */
-  offset?: number;
-}
-
 // ── Image edit — POST /v1/images/edits (JSON/base64 mode) ───────────────────────
 
 export interface ImageRef {

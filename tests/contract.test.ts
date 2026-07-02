@@ -14,8 +14,6 @@ import type {
   ChatCompletionChunk,
   ModelInfo,
   TemplateSummary,
-  DocumentResponse,
-  DocumentListResponse,
   TranscriptionResponse,
   AudioTranslationsParams,
   ChatCompletionParams,
@@ -98,60 +96,6 @@ describe("contract: ModelInfo[]", () => {
       assert.ok(m.name, "model should have a name");
       assert.ok(typeof m.is_free === "boolean", "is_free should be boolean");
     }
-  });
-});
-
-// ── Document response ─────────────────────────────────────────────────────────
-
-describe("contract: DocumentResponse", () => {
-  const data = fixture("document_response.json") as DocumentResponse;
-
-  it("parses required fields", () => {
-    assert.equal(data.document_id, "doc_01JXXXXXXXXXXXXXXXXXXXXXXXXX");
-    assert.equal(data.status, "completed");
-    assert.equal(data.format, "pdf");
-    assert.equal(data.model, "google/gemini-2.5-flash-lite");
-  });
-
-  it("parses optional token counts", () => {
-    assert.equal(data.prompt_tokens, 120);
-    assert.equal(data.completion_tokens, 4800);
-    assert.equal(data.total_tokens, 4920);
-  });
-
-  it("parses nullable fields as null", () => {
-    assert.equal(data.failure_reason, null);
-  });
-
-  it("parses download_url and title", () => {
-    assert.ok(typeof data.download_url === "string");
-    assert.ok(typeof data.title === "string");
-  });
-});
-
-// ── Document list response ────────────────────────────────────────────────────
-
-describe("contract: DocumentListResponse", () => {
-  const data = fixture("document_list_response.json") as DocumentListResponse;
-
-  it("parses pagination fields", () => {
-    assert.equal(data.total, 2);
-    assert.equal(data.limit, 50);
-    assert.equal(data.offset, 0);
-  });
-
-  it("parses documents array", () => {
-    assert.equal(data.documents.length, 2);
-  });
-
-  it("first document is completed", () => {
-    assert.equal(data.documents[0]?.status, "completed");
-  });
-
-  it("second document has null nullable fields", () => {
-    assert.equal(data.documents[1]?.title, null);
-    assert.equal(data.documents[1]?.download_url, null);
-    assert.equal(data.documents[1]?.size_bytes, null);
   });
 });
 
