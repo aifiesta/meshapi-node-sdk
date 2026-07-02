@@ -12,6 +12,9 @@ import { RagResource } from "./resources/rag.js";
 import { RealtimeResource } from "./resources/realtime.js";
 import { AudioResource } from "./resources/audio.js";
 import { VideosResource } from "./resources/videos.js";
+import { ModerationsResource } from "./resources/moderations.js";
+import { WebResource } from "./resources/web-search.js";
+import { RouterResource } from "./resources/router-select.js";
 
 // ── Main client ───────────────────────────────────────────────────────────────
 
@@ -116,6 +119,15 @@ export class MeshAPI {
   readonly audio: AudioResource;
   readonly videos: VideosResource;
 
+  /** Content moderation namespace — POST /v1/moderations. */
+  readonly moderations: ModerationsResource;
+
+  /** Web search namespace — POST /v1/web/search (gated by WEB_SEARCH_ENABLED). */
+  readonly web: WebResource;
+
+  /** Auto Router select-only namespace — POST /v1/router/select (gated by AUTO_ROUTER_ENABLED). */
+  readonly router: RouterResource;
+
   constructor(config: MeshAPIConfig) {
     const http = new HttpClient(config);
     this.chat = new ChatResource(http);
@@ -130,6 +142,9 @@ export class MeshAPI {
     this.realtime = new RealtimeResource(config);
     this.audio = new AudioResource(http);
     this.videos = new VideosResource(http);
+    this.moderations = new ModerationsResource(http);
+    this.web = new WebResource(http);
+    this.router = new RouterResource(http);
   }
 }
 
@@ -245,6 +260,36 @@ export type {
   VideoTaskResponse,
   ListVideoGenerationsParams,
   VideoTaskListResponse,
+
+  // Moderations
+  ModerationParams,
+  ModerationImageUrl,
+  ModerationInputItem,
+  ModerationResult,
+  ModerationResponse,
+
+  // Web search
+  WebSearchParams,
+  WebSearchResultItem,
+  WebSearchResponse,
+
+  // Router select
+  RouterSelectParams,
+  AutoRouterMeta,
+  RouterSelectResponse,
+
+  // Models search
+  ModelSearchParams,
+  ModelsPage,
+
+  // Responses list/get
+  ResponsesListParams,
+  ResponsesListItem,
+  ResponsesListResponse,
+
+  // Image edit
+  ImageRef,
+  ImageEditParams,
 } from "./types.js";
 
 // Realtime

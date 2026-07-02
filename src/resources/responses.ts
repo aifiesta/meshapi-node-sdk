@@ -3,6 +3,8 @@ import type { HttpClient } from "../http.js";
 import type {
   ChatCompletionChunk,
   RequestOptions,
+  ResponsesListParams,
+  ResponsesListResponse,
   ResponsesParams,
   ResponsesResponse,
 } from "../types.js";
@@ -81,5 +83,36 @@ export class ResponsesResource {
     opts?: RequestOptions,
   ): AsyncIterable<ChatCompletionChunk> {
     return makeLazySSEIterable(this.http, "/v1/responses", params, opts);
+  }
+
+  /**
+   * List the caller's background response jobs (OpenAI list envelope).
+   *
+   * @example
+   * ```ts
+   * const jobs = await client.responses.list({ limit: 20 });
+   * ```
+   */
+  list(params: ResponsesListParams = {}, opts?: RequestOptions): Promise<ResponsesListResponse> {
+    const qs = new URLSearchParams();
+    if (params.after !== undefined) qs.set("after", params.after);
+    if (params.limit !== undefined) qs.set("limit", String(params.limit));
+    const query = qs.toString();
+    return this.http.get<ResponsesListResponse>(
+      `/v1/responses${query ? `?${query}` : ""}`,
+      opts,
+    );
+  }
+
+  /**
+   * Fetch a background response job by id.
+   *
+   * @example
+   * ```ts
+   * const job = await client.responses.get("resp_abc123");
+   * ```
+   */
+  get(responseId: string, opts?: RequestOptions): Promise<ResponsesResponse> {
+    return this.http.get<ResponsesResponse>(`/v1/responses/${responseId}`, opts);
   }
 }

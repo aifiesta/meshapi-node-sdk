@@ -39,3 +39,31 @@ describe("models", () => {
     assert.ok(filtered.every(m => !m.is_free), "list(free:false) returned free models");
   });
 });
+
+describe("models search/get", () => {
+  it("search returns a paginated page", async () => {
+    const page = await client.models.search({ limit: 5 });
+    assert.ok(typeof page.total === "number" && page.total >= 0, "expected a total");
+    assert.equal(page.limit, 5, "page should echo the requested limit");
+    assert.ok(page.items.length <= 5, "page must not exceed the limit");
+    assert.ok(Array.isArray(page.brands), "expected a brands facet list");
+    for (const m of page.items) assert.ok(m.id && m.name, "each model needs id + name");
+  });
+
+  it("search q filter matches the query", async () => {
+    const page = await client.models.search({ q: "gpt", limit: 10 });
+    for (const m of page.items) {
+      const hay = `${m.id} ${m.name}`.toLowerCase();
+      assert.ok(hay.includes("gpt"), `unexpected model ${m.id} for q='gpt'`);
+    }
+  });
+
+  it("get by id returns the matching model", async () => {
+    const listed = await client.models.list();
+    assert.ok(listed.length > 0, "need at least one model to fetch by id");
+    const target = listed[0].id;
+    const model = await client.models.get(target);
+    assert.equal(model.id, target, `get(${target}) returned ${model.id}`);
+    assert.ok(model.name);
+  });
+});
