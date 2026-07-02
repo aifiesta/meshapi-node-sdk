@@ -750,17 +750,21 @@ export interface ListVoicesParams {
 export interface Voice {
   voice_id: string;
   name: string;
-  category: string;
-  description: string;
-  preview_url: string;
-  labels: Record<string, string>;
+  // Optional: minimal voice objects (id + name only) must not break parsing;
+  // labels are provider-defined and not always strings.
+  category?: string;
+  description?: string;
+  preview_url?: string;
+  labels?: Record<string, unknown>;
 }
 
 export interface VoicesResponse {
   voices: Voice[];
-  has_more: boolean;
-  total_count: number;
-  next_page_token: string | null;
+  // Optional so a response that omits has_more / total_count is not rejected,
+  // and an absent pagination flag is distinguishable from a real false.
+  has_more?: boolean;
+  total_count?: number;
+  next_page_token?: string | null;
 }
 
 // ── Video ─────────────────────────────────────────────────────────────────────
@@ -854,4 +858,169 @@ export interface VideoTaskListResponse {
   total: number;
   limit: number;
   offset: number;
+}
+
+// ── Moderations — POST /v1/moderations ──────────────────────────────────────────
+
+export interface ModerationImageUrl {
+  url: string;
+}
+
+export interface ModerationInputItem {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: ModerationImageUrl;
+}
+
+export interface ModerationParams {
+  /** Text, list of texts, or multimodal (text/image_url) items. */
+  input: string | string[] | ModerationInputItem[];
+  /** Moderation model; defaults to "omni-moderation-latest" server-side. */
+  model?: string;
+}
+
+export interface ModerationResult {
+  flagged: boolean;
+  categories: Record<string, boolean>;
+  category_scores: Record<string, number>;
+  [key: string]: unknown;
+}
+
+export interface ModerationResponse {
+  id?: string;
+  model?: string;
+  results: ModerationResult[];
+}
+
+// ── Web search — POST /v1/web/search ────────────────────────────────────────────
+
+export interface WebSearchParams {
+  query: string;
+  model?: string;
+  provider?: "native" | "tavily";
+  max_results?: number;
+  search_depth?: "basic" | "advanced";
+  include_domains?: string[];
+  exclude_domains?: string[];
+  include_answer?: boolean;
+}
+
+export interface WebSearchResultItem {
+  title: string;
+  url: string;
+  content?: string;
+  score?: number | null;
+  published_date?: string | null;
+}
+
+export interface WebSearchResponse {
+  query: string;
+  answer?: string | null;
+  results: WebSearchResultItem[];
+  /** "native" | "tavily" today; typed as string so a new engine cannot break parsing. */
+  provider: string;
+  request_id?: string;
+}
+
+// ── Router select — POST /v1/router/select ──────────────────────────────────────
+
+export interface RouterSelectParams {
+  messages: ChatMessage[];
+  api_type?: "completions";
+  exclude_models?: string[];
+}
+
+export interface AutoRouterMeta {
+  fallback_used: boolean;
+  fallback_reason?: string | null;
+}
+
+export interface RouterSelectResponse {
+  model: string;
+  auto_router: AutoRouterMeta;
+  reasoning_effort?: string | null;
+}
+
+// ── Models search — GET /v1/models/search ───────────────────────────────────────
+
+export interface ModelSearchParams {
+  q?: string;
+  free?: boolean;
+  discounted?: boolean;
+  input_modality?: string[];
+  output_modality?: string[];
+  brand?: string[];
+  sort?: "brand" | "name" | "id" | "context_length";
+  order?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export interface ModelsPage {
+  items: ModelInfo[];
+  total: number;
+  limit: number;
+  offset: number;
+  brands: string[];
+}
+
+// ── Responses list — GET /v1/responses, GET /v1/responses/{id} ───────────────────
+
+export interface ResponsesListParams {
+  after?: string;
+  limit?: number;
+}
+
+export interface ResponsesListItem {
+  id: string;
+  object?: string;
+  model?: string;
+  provider?: string;
+  status?: string;
+  created_at?: number;
+  completed_at?: number | null;
+  usage_synced?: boolean;
+}
+
+export interface ResponsesListResponse {
+  object?: string;
+  data: ResponsesListItem[];
+  has_more?: boolean;
+  first_id?: string | null;
+  last_id?: string | null;
+}
+
+// ── Image edit — POST /v1/images/edits (JSON/base64 mode) ───────────────────────
+
+export interface ImageRef {
+  /** data:image/<fmt>;base64,<b64> or a bare base64 string. Remote URLs are rejected. */
+  url: string;
+}
+
+export interface ImageEditParams {
+  model: string;
+  /** base64 / data-URL string, or an ImageRef. */
+  image: string | ImageRef;
+  /** Required for the "edit", "outpaint" and "mix" operations. */
+  prompt?: string;
+  operation?:
+    | "edit"
+    | "inpaint"
+    | "outpaint"
+    | "mix"
+    | "reframe"
+    | "upscale"
+    | "remove_background";
+  mask?: string | ImageRef;
+  reference_images?: Array<string | ImageRef>;
+  n?: number;
+  size?: string;
+  response_format?: "url" | "b64_json";
+  background?: string;
+  upscale_factor?: string;
+  quality_tier?: string;
+  aspect_ratio?: string;
+  resolution?: string;
+  expand_factor?: string | number;
+  mask_feather?: number;
 }

@@ -130,6 +130,10 @@ const reply = await client.responses.create({
   max_output_tokens: 512,
 });
 console.log(reply.choices[0]?.message.content);
+
+// List background response jobs, or fetch one by id
+const jobs = await client.responses.list({ limit: 20 });
+const job = await client.responses.get("resp_abc123");
 ```
 
 ## Embeddings
@@ -217,6 +221,14 @@ for await (const chunk of client.images.stream({ model: "openai/gpt-image-1", pr
   if (chunk.status === "processing") console.log("Generating...");
   else if (chunk.data?.length) console.log("Done:", chunk.data[0].url);
 }
+
+// Editing — `image` is a base64 / data: URL (remote http(s) URLs are rejected).
+const edited = await client.images.edit({
+  model: "openai/gpt-image-1",
+  image: "data:image/png;base64,<...>",
+  prompt: "Replace the background with a beach at sunset",
+  operation: "edit", // or inpaint / outpaint / mix / reframe / upscale / remove_background
+});
 ```
 
 ## Compare (multi-model fanout)
@@ -345,6 +357,41 @@ Works in Node 22+ and browsers with the native `WebSocket` global. On Node 18–
 const all  = await client.models.list();
 const free = await client.models.free();
 const paid = await client.models.paid();
+
+// Paginated catalog search (DB-only, no model cost)
+const page = await client.models.search({ q: "gpt", limit: 10 });
+console.log(page.total, page.brands);
+
+// Fetch one model's detail
+const gpt4o = await client.models.get("openai/gpt-4o");
+```
+
+## Moderations
+
+```ts
+const res = await client.moderations.create({ input: "text to classify" });
+if (res.results[0]?.flagged) console.log(res.results[0].categories);
+```
+
+## Web search
+
+Gated server-side by `WEB_SEARCH_ENABLED`. Native-first with Tavily fallback —
+inspect `res.provider` to see which engine served the request.
+
+```ts
+const res = await client.web.search({ query: "latest Mars rover news", max_results: 5, include_answer: true });
+console.log(res.provider, res.answer);
+for (const hit of res.results) console.log(hit.title, hit.url);
+```
+
+## Router select
+
+Gated server-side by `AUTO_ROUTER_ENABLED`. Returns the model the Auto Router
+*would* pick — without running inference.
+
+```ts
+const sel = await client.router.select({ messages: [{ role: "user", content: "Prove that 2+2=4." }] });
+console.log(sel.model, sel.auto_router.fallback_used);
 ```
 
 ## Prompt templates
