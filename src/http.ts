@@ -1,4 +1,15 @@
 import { MeshAPIApiError } from "./errors.js";
+import {
+  formatResilienceEvent,
+  resolveRetryPolicy,
+} from "./resilience.js";
+import type {
+  FallbackConfig,
+  ResilienceEvent,
+  ResilienceLogger,
+  ResolvedRetryPolicy,
+  RetryPolicy,
+} from "./resilience.js";
 import type { ChatCompletionChunk, RequestOptions } from "./types.js";
 
 // ── Client config ─────────────────────────────────────────────────────────────
@@ -40,16 +51,62 @@ export interface MeshAPIConfig {
   /**
    * Maximum number of retries for 429 and 5xx errors.
    * Streaming requests are never retried.
+   * @deprecated Use `retry.maxRetries` — this alias maps onto it.
    * @default 3
    */
   maxRetries?: number;
+
+  /**
+   * Transport retry policy: which statuses to retry, backoff shape, whether to
+   * honour `Retry-After`, and (opt-in) network-error retry. Streaming requests
+   * are never retried.
+   *
+   * @example
+   * ```ts
+   * retry: { maxRetries: 5, backoffBaseMs: 250, retryOnStatus: [429, 503] }
+   * ```
+   */
+  retry?: RetryPolicy;
+
+  /**
+   * Client-side model-fallback chain for `chat.completions.create`
+   * (non-streaming): when the primary model's request exhausts its retries on
+   * a transient error, the SDK re-issues it against each model in the chain
+   * until one succeeds. Each hop fires a `fallback` event.
+   *
+   * @example
+   * ```ts
+   * fallback: { models: ["anthropic/claude-sonnet-5", "openai/gpt-4o-mini"] }
+   * ```
+   */
+  fallback?: FallbackConfig;
+
+  /**
+   * Structured sink for resilience events — every transport retry, every
+   * fallback hop, and every gateway-side routing outcome (parsed from the
+   * `X-Mesh-Routing-*` response headers). Use this to pipe into your own
+   * logging framework; use `debug` for ready-made readable lines instead.
+   */
+  logger?: ResilienceLogger;
+
+  /**
+   * Print readable resilience lines to stderr (`[meshapi] retrying POST … `).
+   * Gateway-routing lines are printed only when interesting (a retry or a
+   * provider fallback actually happened). Independent of `logger`.
+   * @default false
+   */
+  debug?: boolean;
 }
 
-const RETRY_STATUS_CODES = new Set([429, 502, 503, 504]);
-const BACKOFF_BASE_MS = 500;
-const BACKOFF_MAX_MS = 30_000;
 const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
 const SDK_VERSION_VALUE = "node/0.1.0";
+
+// Gateway routing-outcome headers (FT-244) — present when the API key's
+// routing_policy is active. See resilience.ts (GatewayRoutingEvent).
+const ROUTING_ATTEMPTS_HEADER = "x-mesh-routing-attempts";
+const ROUTING_FALLBACK_HEADER = "x-mesh-routing-fallback";
+const SERVED_PROVIDER_HEADER = "x-mesh-served-provider";
+const REQUEST_ID_HEADER = "x-request-id";
 
 // ── HTTP client ───────────────────────────────────────────────────────────────
 
@@ -59,7 +116,11 @@ export class HttpClient {
   private readonly defaultTimeoutMs: number;
   private readonly defaultSignal: AbortSignal | undefined;
   private readonly fetchImpl: typeof fetch;
-  private readonly maxRetries: number;
+  private readonly retry: ResolvedRetryPolicy;
+  private readonly logger: ResilienceLogger | undefined;
+  private readonly debug: boolean;
+  /** Chat's client-side model-fallback chain (read by ChatCompletionsResource). */
+  readonly fallback: FallbackConfig | undefined;
 
   constructor(config: MeshAPIConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -67,7 +128,23 @@ export class HttpClient {
     this.defaultTimeoutMs = config.timeoutMs ?? 60_000;
     this.defaultSignal = config.signal;
     this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
-    this.maxRetries = config.maxRetries ?? 3;
+    this.retry = resolveRetryPolicy(config.retry, config.maxRetries);
+    this.fallback = config.fallback;
+    this.logger = config.logger;
+    this.debug = config.debug ?? false;
+  }
+
+  /**
+   * Publish a resilience event to the configured `logger` and, with
+   * `debug: true`, as a readable stderr line. Gateway-routing lines are only
+   * printed when a server-side retry/fallback actually happened; the logger
+   * receives every event. Also used by ChatCompletionsResource for fallback hops.
+   */
+  emit(event: ResilienceEvent): void {
+    this.logger?.(event);
+    if (!this.debug) return;
+    if (event.type === "gateway-routing" && event.attempts <= 1 && !event.fallback) return;
+    console.error(`[meshapi] ${formatResilienceEvent(event)}`);
   }
 
   /**
@@ -134,37 +211,18 @@ export class HttpClient {
       // Do NOT set Content-Type — fetch sets it automatically with the multipart boundary
     };
 
-    let attempt = 0;
-    while (true) {
-      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-        method: "POST",
-        headers,
-        body: form,
-        signal: signal as AbortSignal,
-      });
+    const response = await this.sendWithRetry("POST", path, {
+      method: "POST",
+      headers,
+      body: form,
+      signal: signal as AbortSignal,
+    });
 
-      if (RETRY_STATUS_CODES.has(response.status) && attempt < this.maxRetries) {
-        const delay = this.computeDelay(attempt, this.getRetryAfter(response));
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        attempt++;
-        continue;
-      }
-
-      if (!response.ok) {
-        throw await MeshAPIApiError.fromResponse(response);
-      }
-
-      if (response.status === 204) {
-        return undefined as T;
-      }
-
-      const ct = response.headers.get("content-type") ?? "";
-      if (!ct.includes("application/json")) {
-        return (await response.text()) as unknown as T;
-      }
-
-      return response.json() as Promise<T>;
+    if (!response.ok) {
+      throw await MeshAPIApiError.fromResponse(response);
     }
+
+    return this.parseJsonBody<T>(response);
   }
 
   /**
@@ -225,44 +283,8 @@ export class HttpClient {
     body: unknown,
     opts?: RequestOptions,
   ): Promise<T> {
-    const signal = this.buildSignal(opts);
-
-    const init: RequestInit = {
-      method,
-      headers: this.buildHeaders(),
-      signal: signal as AbortSignal,
-    };
-
-    if (body !== undefined) {
-      init.body = JSON.stringify(body);
-    }
-
-    let attempt = 0;
-    while (true) {
-      const response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
-
-      if (response.status === 204) {
-        return undefined as T;
-      }
-
-      if (RETRY_STATUS_CODES.has(response.status) && attempt < this.maxRetries) {
-        const delay = this.computeDelay(attempt, this.getRetryAfter(response));
-        await new Promise((resolve) => setTimeout(resolve, delay));
-        attempt++;
-        continue;
-      }
-
-      if (!response.ok) {
-        throw await MeshAPIApiError.fromResponse(response);
-      }
-
-      const contentType = response.headers.get("content-type") ?? "";
-      if (!contentType.includes("application/json")) {
-        return (await response.text()) as unknown as T;
-      }
-
-      return response.json() as Promise<T>;
-    }
+    const response = await this.requestRaw(method, path, body, opts);
+    return this.parseJsonBody<T>(response);
   }
 
   private async requestRaw(
@@ -283,39 +305,123 @@ export class HttpClient {
       init.body = JSON.stringify(body);
     }
 
+    const response = await this.sendWithRetry(method, path, init);
+
+    if (!response.ok) {
+      throw await MeshAPIApiError.fromResponse(response);
+    }
+
+    return response;
+  }
+
+  /**
+   * The single transport retry loop shared by every non-streaming request
+   * (JSON, raw-bytes, and multipart). Re-sends on the policy's status set
+   * (and, opt-in, on pre-response network errors), with exponential backoff,
+   * jitter, and `Retry-After` support. Emits a `retry` event per re-send and a
+   * `gateway-routing` event when the final response carries `X-Mesh-Routing-*`
+   * headers. Returns the final Response — callers handle non-ok statuses.
+   */
+  private async sendWithRetry(method: string, path: string, init: RequestInit): Promise<Response> {
+    const { maxRetries, retryOnStatus, retryOnNetworkError } = this.retry;
     let attempt = 0;
     while (true) {
-      const response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
-
-      if (RETRY_STATUS_CODES.has(response.status) && attempt < this.maxRetries) {
-        const delay = this.computeDelay(attempt, this.getRetryAfter(response));
-        await new Promise((resolve) => setTimeout(resolve, delay));
+      let response: Response;
+      try {
+        response = await this.fetchImpl(`${this.baseUrl}${path}`, init);
+      } catch (err) {
+        // Aborts (user cancel / timeout) always propagate. Other pre-response
+        // failures (DNS, connection refused/reset) retry only when opted in —
+        // they are ambiguous for non-idempotent POSTs.
+        const isAbort = err instanceof Error && err.name === "AbortError";
+        if (isAbort || !retryOnNetworkError || attempt >= maxRetries) {
+          throw err;
+        }
+        const delayMs = this.computeDelay(attempt, null);
+        this.emit({
+          type: "retry",
+          method,
+          path,
+          attempt: attempt + 1,
+          maxRetries,
+          delayMs,
+          reason: "network-error",
+        });
+        await sleep(delayMs);
         attempt++;
         continue;
       }
 
-      if (!response.ok) {
-        throw await MeshAPIApiError.fromResponse(response);
+      if (retryOnStatus.has(response.status) && attempt < maxRetries) {
+        const delayMs = this.computeDelay(attempt, this.getRetryAfter(response));
+        this.emit({
+          type: "retry",
+          method,
+          path,
+          attempt: attempt + 1,
+          maxRetries,
+          status: response.status,
+          requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+          delayMs,
+          reason: "status",
+        });
+        await sleep(delayMs);
+        attempt++;
+        continue;
       }
 
+      this.emitGatewayRouting(path, response);
       return response;
     }
   }
 
+  /**
+   * Surface the gateway's own routing outcome (server-side retry / provider
+   * fallback, FT-244) when the response reports it. Header-absence means the
+   * key has no active routing policy — nothing is emitted.
+   */
+  private emitGatewayRouting(path: string, response: Response): void {
+    const attempts = response.headers.get(ROUTING_ATTEMPTS_HEADER);
+    if (attempts === null) return;
+    this.emit({
+      type: "gateway-routing",
+      path,
+      attempts: Number(attempts) || 1,
+      fallback: response.headers.get(ROUTING_FALLBACK_HEADER) === "true",
+      servedProvider: response.headers.get(SERVED_PROVIDER_HEADER) ?? undefined,
+      requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
+    });
+  }
+
+  private async parseJsonBody<T>(response: Response): Promise<T> {
+    if (response.status === 204) {
+      return undefined as T;
+    }
+    const contentType = response.headers.get("content-type") ?? "";
+    if (!contentType.includes("application/json")) {
+      return (await response.text()) as unknown as T;
+    }
+    return response.json() as Promise<T>;
+  }
+
   private computeDelay(attempt: number, retryAfterMs: number | null): number {
-    const baseMs =
-      retryAfterMs ?? BACKOFF_BASE_MS * Math.pow(2, attempt);
-    const capped = Math.min(baseMs, BACKOFF_MAX_MS);
+    const baseMs = retryAfterMs ?? this.retry.backoffBaseMs * Math.pow(2, attempt);
+    const capped = Math.min(baseMs, this.retry.backoffMaxMs);
     const jitter = capped * (0.8 + Math.random() * 0.4); // ±20%
     return jitter;
   }
 
   private getRetryAfter(response: Response): number | null {
+    if (!this.retry.respectRetryAfter) return null;
     const header = response.headers.get("retry-after");
     if (!header) return null;
     const seconds = parseFloat(header);
     return isNaN(seconds) ? null : Math.ceil(seconds) * 1000;
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ── SSE parser ────────────────────────────────────────────────────────────────

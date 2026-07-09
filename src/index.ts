@@ -152,6 +152,18 @@ export class MeshAPI {
 export { MeshAPIApiError } from "./errors.js";
 export type { MeshAPIConfig } from "./http.js";
 
+// Resilience (retry / fallback / observability)
+export { formatResilienceEvent } from "./resilience.js";
+export type {
+  RetryPolicy,
+  FallbackConfig,
+  ResilienceEvent,
+  ResilienceLogger,
+  RetryEvent,
+  FallbackEvent,
+  GatewayRoutingEvent,
+} from "./resilience.js";
+
 export type {
   // Shared
   RequestOptions,

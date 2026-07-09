@@ -148,6 +148,16 @@ export interface ChatCompletionParams {
   /** Ordered fallback model list if primary model is unavailable */
   models?: string[];
 
+  /**
+   * CLIENT-SIDE model-fallback chain for this call (non-streaming only):
+   * when the request fails with a transient error after transport retries,
+   * the SDK re-issues it against each listed model in order. Overrides the
+   * client-level `fallback.models` config; never sent to the server (distinct
+   * from `models`, the server-side provider-handled list above). Each hop
+   * fires a `fallback` event on the configured `logger` / `debug` output.
+   */
+  fallbackModels?: string[];
+
   /** Client identifier for abuse-detection (max 256 chars) */
   user?: string;
   modality?: "text" | "image";

@@ -59,6 +59,10 @@ const client = new MeshAPI({
   timeoutMs: 60_000,                 // default 60 s
   signal: controller.signal,         // optional global AbortSignal
   fetch: customFetch,                // optional fetch override
+  retry: { maxRetries: 3 },          // transport retry policy (see Resilience)
+  fallback: { models: [...] },       // client-side model-fallback chain
+  debug: true,                       // readable retry/fallback lines on stderr
+  logger: (event) => {},             // structured resilience events
 });
 ```
 
@@ -454,9 +458,90 @@ try {
 | `upstream_error` | 500 | Upstream or server error |
 | `stream_interrupted` | n/a | Mid-stream connection dropped |
 
-## Retry and backoff
+## Resilience: retry, fallback, and observability
 
-Retries on 429/502/503/504 with exponential backoff (default 3 retries, 500 ms base, 30 s max). **Streams do not retry.**
+### Transport retry
+
+Every non-streaming request retries on 429/502/503/504 with exponential
+backoff + jitter, honouring `Retry-After` (default 3 retries, 500 ms base,
+30 s max). **Streams never retry.** The policy is configurable:
+
+```ts
+const client = new MeshAPI({
+  baseUrl,
+  token,
+  retry: {
+    maxRetries: 5,            // default 3
+    retryOnStatus: [429, 503], // default [429, 502, 503, 504]
+    backoffBaseMs: 250,       // default 500
+    backoffMaxMs: 10_000,     // default 30_000
+    respectRetryAfter: true,  // default true
+    retryOnNetworkError: true, // default false — POSTs are non-idempotent
+  },
+});
+```
+
+(The top-level `maxRetries` option still works and maps onto `retry.maxRetries`.)
+
+### Model fallback chain
+
+`chat.completions.create` (non-streaming) can fall back to other models when
+the primary fails with a transient error (default 502/503/504, after transport
+retries). Configure a chain client-wide or per call:
+
+```ts
+const client = new MeshAPI({
+  baseUrl,
+  token,
+  fallback: { models: ["anthropic/claude-sonnet-5", "mistral/mistral-large"] },
+});
+
+// Per-call override (never sent to the server):
+await client.chat.completions.create({
+  model: "openai/gpt-4o",
+  messages,
+  fallbackModels: ["anthropic/claude-sonnet-5"],
+});
+```
+
+Terminal errors (auth, validation, billing) never advance the chain. This is
+distinct from the `models` request param, which is a server-side
+provider-handled list.
+
+### Seeing what happened: `debug` and `logger`
+
+With `debug: true`, every retry and fallback prints a readable line to stderr:
+
+```
+[meshapi] retrying POST /v1/chat/completions (attempt 1/4 failed: 503, next in 512ms) [req_abc]
+[meshapi] falling back openai/gpt-4o → anthropic/claude-sonnet-5 (1/2: 503 provider_not_available)
+[meshapi] gateway served /v1/chat/completions via bedrock (2 attempts, provider fallback) [req_abc]
+```
+
+For structured logging, pass a `logger` — it receives every `retry`,
+`fallback`, and `gateway-routing` event:
+
+```ts
+const client = new MeshAPI({
+  baseUrl,
+  token,
+  logger: (event) => {
+    if (event.type === "retry") myLog.warn("meshapi retry", event);
+    if (event.type === "fallback") myLog.warn("meshapi fallback", event);
+    if (event.type === "gateway-routing" && event.fallback) {
+      myLog.info(`served by ${event.servedProvider} after ${event.attempts} attempts`);
+    }
+  },
+});
+```
+
+`gateway-routing` events report the **server-side** resilience the gateway
+itself performed (per-key `routing_policy`: same-target retries +
+cross-provider fallback), parsed from the `X-Mesh-Routing-Attempts` /
+`X-Mesh-Routing-Fallback` / `X-Mesh-Served-Provider` response headers. They
+appear only when your API key has an active routing policy. Streaming
+responses carry no routing headers — check your MeshAPI dashboard logs for
+per-request routing detail instead.
 
 ## TypeScript types
 
