@@ -47,8 +47,12 @@ describe("resilience (retry / fallback / observability)", () => {
   it("unreachable gateway: retry events fire, the chain advances, and the last error propagates", async () => {
     const events = [];
     const client = new MeshAPI({
-      // TEST-NET-1 (RFC 5737) — guaranteed unroutable.
-      baseUrl: "http://192.0.2.1:9",
+      // A privileged, never-bound localhost port — connect fails instantly with
+      // ECONNREFUSED (a network error, NOT a timeout), which is what we want to
+      // exercise: retryable + fallback-eligible. TEST-NET-1 (192.0.2.x) is unroutable
+      // but on networks that silently drop its packets the connect would instead time
+      // out, and timeouts are deliberately never retried — making this test flaky.
+      baseUrl: "http://127.0.0.1:1",
       token: TOKEN,
       timeoutMs: 2_000,
       retry: { maxRetries: 1, backoffBaseMs: 10, backoffMaxMs: 20, retryOnNetworkError: true },
