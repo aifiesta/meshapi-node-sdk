@@ -296,6 +296,8 @@ describe("gateway-routing events", () => {
       jsonResponse(200, OK_CHAT_BODY, {
         "x-mesh-routing-attempts": "2",
         "x-mesh-routing-fallback": "true",
+        // The gateway does not send a served-provider header; assert we don't
+        // surface a provider name even if some upstream header sneaks through.
         "x-mesh-served-provider": "bedrock",
         "x-request-id": "req_routed",
       }),
@@ -307,8 +309,9 @@ describe("gateway-routing events", () => {
     assert.ok(gw && gw.type === "gateway-routing");
     assert.equal(gw.attempts, 2);
     assert.equal(gw.fallback, true);
-    assert.equal(gw.servedProvider, "bedrock");
     assert.equal(gw.requestId, "req_routed");
+    // The provider name is never exposed on the event.
+    assert.equal("servedProvider" in gw, false);
   });
 
   it("emits nothing when the headers are absent (no active routing policy)", async () => {
@@ -361,12 +364,11 @@ describe("formatResilienceEvent", () => {
       path: "/v1/chat/completions",
       attempts: 2,
       fallback: true,
-      servedProvider: "bedrock",
       requestId: "req_2",
     });
     assert.equal(
       line,
-      "gateway served /v1/chat/completions via bedrock (2 attempts, provider fallback) [req_2]",
+      "gateway served /v1/chat/completions (2 attempts, provider fallback) [req_2]",
     );
   });
 });

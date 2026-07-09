@@ -142,14 +142,14 @@ export interface FallbackEvent {
  * The GATEWAY retried or fell back server-side while serving this request —
  * parsed from the `X-Mesh-Routing-*` response headers (present when the API
  * key's `routing_policy` is active). `fallback: true` means a different
- * provider than the primary served the request.
+ * provider than the primary served the request. The serving provider's name is
+ * intentionally not reported — which upstream served a request is internal.
  */
 export interface GatewayRoutingEvent {
   type: "gateway-routing";
   path: string;
   attempts: number;
   fallback: boolean;
-  servedProvider?: string | undefined;
   requestId?: string | undefined;
 }
 
@@ -164,7 +164,7 @@ export type ResilienceLogger = (event: ResilienceEvent) => void;
  * Render an event as a single readable line, e.g.
  *   `retrying POST /v1/chat/completions (attempt 1/3 failed: 503, next in 512ms) [req_abc]`
  *   `falling back openai/gpt-4o → anthropic/claude-sonnet-5 (1/2: 503 provider_not_available)`
- *   `gateway served /v1/chat/completions via bedrock (2 attempts, provider fallback) [req_abc]`
+ *   `gateway served /v1/chat/completions (2 attempts, provider fallback) [req_abc]`
  */
 export function formatResilienceEvent(event: ResilienceEvent): string {
   const rid = event.requestId ? ` [${event.requestId}]` : "";
@@ -185,11 +185,10 @@ export function formatResilienceEvent(event: ResilienceEvent): string {
       );
     }
     case "gateway-routing": {
-      const served = event.servedProvider ? ` via ${event.servedProvider}` : "";
       const detail = event.fallback
         ? `${event.attempts} attempts, provider fallback`
         : `${event.attempts} attempts`;
-      return `gateway served ${event.path}${served} (${detail})${rid}`;
+      return `gateway served ${event.path} (${detail})${rid}`;
     }
   }
 }

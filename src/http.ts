@@ -105,7 +105,6 @@ const SDK_VERSION_VALUE = "node/0.1.0";
 // routing_policy is active. See resilience.ts (GatewayRoutingEvent).
 const ROUTING_ATTEMPTS_HEADER = "x-mesh-routing-attempts";
 const ROUTING_FALLBACK_HEADER = "x-mesh-routing-fallback";
-const SERVED_PROVIDER_HEADER = "x-mesh-served-provider";
 const REQUEST_ID_HEADER = "x-request-id";
 
 // ── HTTP client ───────────────────────────────────────────────────────────────
@@ -388,7 +387,6 @@ export class HttpClient {
       path,
       attempts: Number(attempts) || 1,
       fallback: response.headers.get(ROUTING_FALLBACK_HEADER) === "true",
-      servedProvider: response.headers.get(SERVED_PROVIDER_HEADER) ?? undefined,
       requestId: response.headers.get(REQUEST_ID_HEADER) ?? undefined,
     });
   }

@@ -515,7 +515,7 @@ With `debug: true`, every retry and fallback prints a readable line to stderr:
 ```
 [meshapi] retrying POST /v1/chat/completions (attempt 1/4 failed: 503, next in 512ms) [req_abc]
 [meshapi] falling back openai/gpt-4o → anthropic/claude-sonnet-5 (1/2: 503 provider_not_available)
-[meshapi] gateway served /v1/chat/completions via bedrock (2 attempts, provider fallback) [req_abc]
+[meshapi] gateway served /v1/chat/completions (2 attempts, provider fallback) [req_abc]
 ```
 
 For structured logging, pass a `logger` — it receives every `retry`,
@@ -529,7 +529,7 @@ const client = new MeshAPI({
     if (event.type === "retry") myLog.warn("meshapi retry", event);
     if (event.type === "fallback") myLog.warn("meshapi fallback", event);
     if (event.type === "gateway-routing" && event.fallback) {
-      myLog.info(`served by ${event.servedProvider} after ${event.attempts} attempts`);
+      myLog.info(`gateway used a provider fallback after ${event.attempts} attempts`);
     }
   },
 });
@@ -538,7 +538,8 @@ const client = new MeshAPI({
 `gateway-routing` events report the **server-side** resilience the gateway
 itself performed (per-key `routing_policy`: same-target retries +
 cross-provider fallback), parsed from the `X-Mesh-Routing-Attempts` /
-`X-Mesh-Routing-Fallback` / `X-Mesh-Served-Provider` response headers. They
+`X-Mesh-Routing-Fallback` response headers. (Which upstream provider served the
+request is internal and is not reported.) They
 appear only when your API key has an active routing policy. Streaming
 responses carry no routing headers — check your MeshAPI dashboard logs for
 per-request routing detail instead.
