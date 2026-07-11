@@ -108,3 +108,35 @@ export class MeshAPIApiError extends Error {
     return new MeshAPIApiError(response.status, syntheticEnvelope);
   }
 }
+
+/**
+ * Thrown by `chat.completions.parse()` when the model's response cannot be
+ * parsed into the requested schema.
+ *
+ * The most common cause is that the model does not support structured outputs
+ * (`response_format`): the gateway forwards the field, the provider ignores it,
+ * and the model returns plain text instead of JSON. The underlying error (a
+ * `SyntaxError` from `JSON.parse` or the validator's issues) is on `.cause`.
+ * A client-side error, so `status` is `0`.
+ *
+ * @example
+ * ```ts
+ * try {
+ *   await client.chat.completions.parse(params, Country);
+ * } catch (err) {
+ *   if (err instanceof StructuredOutputError) console.error(err.message);
+ * }
+ * ```
+ */
+export class StructuredOutputError extends MeshAPIApiError {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(0, {
+      error: { code: "structured_output_parse_error", message },
+      request_id: "",
+    });
+    this.name = "StructuredOutputError";
+    if (options?.cause !== undefined) {
+      (this as { cause?: unknown }).cause = options.cause;
+    }
+  }
+}

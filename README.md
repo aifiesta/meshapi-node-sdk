@@ -120,6 +120,80 @@ try {
 }
 ```
 
+## Structured outputs
+
+`chat.completions.parse()` constrains the model to a JSON schema and returns a
+parsed, typed result. Pass a [Standard Schema](https://standardschema.dev)
+validator (Zod v3.24+, Valibot, ArkType) for runtime validation + typing, or a
+raw JSON schema object.
+
+```ts
+import { z } from "zod"; // optional peer dependency — only needed for this path
+
+const Country = z.object({
+  country: z.string(),
+  capital: z.string(),
+  populationMillions: z.number(),
+});
+
+const country = await client.chat.completions.parse(
+  {
+    model: "openai/gpt-4o-mini",
+    messages: [{ role: "user", content: "Give me structured facts about France." }],
+  },
+  Country,
+);
+console.log(country.capital, country.populationMillions); // typed + validated
+```
+
+No validator? Pass a raw JSON schema and type the result yourself:
+
+```ts
+interface Country { country: string; capital: string }
+
+const country = await client.chat.completions.parse<Country>(
+  { model: "openai/gpt-4o-mini", messages: [{ role: "user", content: "…" }] },
+  { name: "country", schema: { type: "object", properties: {
+    country: { type: "string" }, capital: { type: "string" } },
+    required: ["country", "capital"], additionalProperties: false } },
+);
+```
+
+> `zod` is an **optional peer dependency** — the SDK ships with no runtime
+> dependencies and only imports zod (v4, for JSON-schema derivation) when you
+> pass a Zod schema. The raw path needs nothing.
+
+### Auto-retry (opt-in)
+
+Set `maxRetries` to feed a failed response back to the model with the validation
+error appended. Each retry is a billed call; the default is `0`.
+
+```ts
+await client.chat.completions.parse(params, Country, { maxRetries: 3 });
+```
+
+### When the model doesn't support structured output
+
+If parsing fails after any retries, `parse()` throws `StructuredOutputError` (a
+`MeshAPIApiError` subclass; the underlying error is on `.cause`). When the model
+returns plain text instead of JSON — usually because it doesn't support
+`response_format` — the message points you at the model's support:
+
+```ts
+import { StructuredOutputError } from "meshapi-node-sdk";
+
+try {
+  await client.chat.completions.parse(params, Country);
+} catch (err) {
+  if (err instanceof StructuredOutputError) console.error(err.message);
+  // "… the model returned text that is not valid JSON … Check the model's
+  //  support on the Models page (https://app.meshapi.ai/…/models) …"
+}
+```
+
+Check a model's `supports_structured_output` flag via `GET /v1/models`, or on the
+Models page in your dashboard. `parse()` is non-streaming.
+
 ## Responses API (reasoning models)
 
 ```ts

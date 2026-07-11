@@ -82,3 +82,32 @@ for (const model of MODELS) {
     });
   });
 }
+
+// ── .parse() ergonomic API (MESH-363) ─────────────────────────────────────────
+// Raw JSON-schema path (no validator dependency). Returns the parsed object
+// directly; throws StructuredOutputError if the model can't produce it.
+for (const model of MODELS) {
+  describe(`parse() raw schema [${model}]`, () => {
+    it("returns the parsed object typed via the schema", async () => {
+      const country = await client.chat.completions.parse(
+        {
+          model,
+          messages: [{ role: "user", content: "What is the capital of France?" }],
+          max_tokens: 1000,
+          temperature: 0,
+        },
+        {
+          name: "country_info",
+          schema: {
+            type: "object",
+            properties: { country: { type: "string" }, capital: { type: "string" } },
+            required: ["country", "capital"],
+            additionalProperties: false,
+          },
+        },
+      );
+      assert.equal(typeof country.capital, "string");
+      assert.ok(country.capital.toLowerCase().includes("paris"), JSON.stringify(country));
+    });
+  });
+}
