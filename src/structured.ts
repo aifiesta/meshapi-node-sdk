@@ -106,8 +106,19 @@ async function toJsonSchema(schema: StandardSchemaV1): Promise<Record<string, un
     }
     return (fn as (s: unknown) => Record<string, unknown>)(schema);
   }
+  // Non-Zod Standard Schema validators (Valibot, ArkType, …) may expose their
+  // own JSON-schema converter — ArkType, for example, has `.toJsonSchema()`.
+  // Use it when present so those validators work without a raw JSON schema.
+  const converter =
+    (schema as { toJsonSchema?: unknown }).toJsonSchema ??
+    (schema as { toJSONSchema?: unknown }).toJSONSchema;
+  if (typeof converter === "function") {
+    return (converter as (this: unknown) => Record<string, unknown>).call(schema);
+  }
   throw new Error(
-    `Cannot derive a JSON schema from a "${vendor}" schema. Pass a raw JSON schema \`{ name, schema }\`, or use a Zod (v4) schema.`,
+    `Cannot derive a JSON schema from a "${vendor}" schema: it does not expose a ` +
+      `\`toJsonSchema()\` method. Pass a raw JSON schema \`{ name, schema }\`, or use a ` +
+      `Zod (v4) schema or another validator that exposes \`toJsonSchema()\` (e.g. ArkType).`,
   );
 }
 
@@ -179,8 +190,18 @@ export function structuredOutputErrorMessage(
   model: string | undefined,
   notJson: boolean,
   error: unknown,
+  emptyContent = false,
 ): string {
   const where = model ? ` from model '${model}'` : "";
+  if (emptyContent) {
+    return (
+      `Could not parse a structured response${where}: the model returned no text content ` +
+      "(the message content was empty or null). This usually means the model produced a refusal " +
+      "or a tool call rather than a JSON answer, not that it lacks structured-output support. " +
+      "Remove any tools from the request if you expected JSON, check for a refusal, and confirm the " +
+      `model supports structured outputs on the Models page (${MODELS_URL}). Original error: ${errText(error)}`
+    );
+  }
   if (notJson) {
     return (
       `Could not parse a structured response${where}: the model returned text that is not valid JSON, ` +

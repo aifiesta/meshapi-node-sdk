@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { z } from "zod";
 import { ChatCompletionsResource } from "../src/resources/chat.js";
 import { StructuredOutputError } from "../src/errors.js";
+import { buildResponseFormat } from "../src/structured.js";
 
 const Country = z.object({ country: z.string(), capital: z.string() });
 
@@ -134,5 +135,75 @@ describe("chat.completions.parse — raw JSON schema", () => {
     };
     await res.parse(PARAMS, wrapper);
     assert.deepEqual(calls[0].body.response_format, wrapper);
+  });
+});
+
+describe("chat.completions.parse — non-Zod Standard Schema validators", () => {
+  // Minimal fake of an ArkType-style validator: passes isStandardSchema() and
+  // exposes its own JSON-schema converter.
+  const arktypeLike = {
+    "~standard": {
+      version: 1,
+      vendor: "arktype",
+      validate: (value: unknown) => ({ value }),
+    },
+    toJsonSchema: () => ({
+      type: "object",
+      properties: { x: { type: "number" } },
+      required: ["x"],
+    }),
+  };
+
+  it("uses a validator-provided toJsonSchema() to build the wire schema", async () => {
+    const rf = await buildResponseFormat(arktypeLike);
+    assert.equal(rf.type, "json_schema");
+    const js = rf.json_schema as { schema: { properties: Record<string, unknown> } };
+    assert.ok(js.schema.properties.x);
+  });
+
+  it("throws a clear, vendor-named error for validators without a converter", async () => {
+    const valibotLike = {
+      "~standard": {
+        version: 1,
+        vendor: "valibot",
+        validate: (value: unknown) => ({ value }),
+      },
+    };
+    await assert.rejects(
+      () => buildResponseFormat(valibotLike),
+      (e: unknown) =>
+        e instanceof Error &&
+        e.message.includes("valibot") &&
+        /pass a raw JSON schema `\{ name, schema \}`/i.test(e.message),
+    );
+  });
+});
+
+describe("chat.completions.parse — maxRetries validation", () => {
+  for (const bad of [Infinity, NaN, -1, 1.5]) {
+    it(`rejects maxRetries: ${bad} with RangeError`, async () => {
+      const { http, calls } = mockHttp([]); // guard fires before any HTTP call
+      const res = new ChatCompletionsResource(http);
+      await assert.rejects(
+        () => res.parse(PARAMS, Country, { maxRetries: bad }),
+        (e: unknown) =>
+          e instanceof RangeError && /non-negative safe integer/.test(e.message),
+      );
+      assert.equal(calls.length, 0);
+    });
+  }
+});
+
+describe("chat.completions.parse — empty content", () => {
+  it("empty content -> StructuredOutputError mentioning no text content, not lack of support", async () => {
+    const { http } = mockHttp([payload("")]);
+    const res = new ChatCompletionsResource(http);
+    await assert.rejects(
+      () => res.parse(PARAMS, Country),
+      (e: unknown) =>
+        e instanceof StructuredOutputError &&
+        /no text content/.test(e.message) &&
+        !/does not support structured outputs/.test(e.message),
+    );
   });
 });

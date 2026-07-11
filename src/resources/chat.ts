@@ -128,6 +128,9 @@ export class ChatCompletionsResource {
     opts?: StructuredParseOptions,
   ): Promise<unknown> {
     const maxRetries = opts?.maxRetries ?? 0;
+    if (!Number.isSafeInteger(maxRetries) || maxRetries < 0) {
+      throw new RangeError("maxRetries must be a non-negative safe integer");
+    }
     let httpOpts: RequestOptions | undefined;
     if (opts && (opts.signal !== undefined || opts.timeoutMs !== undefined)) {
       httpOpts = {};
@@ -153,8 +156,9 @@ export class ChatCompletionsResource {
       const outcome = await tryParse(schema, content);
       if (outcome.ok) return outcome.value;
       if (attempt >= maxRetries) {
+        const emptyContent = content.trim() === "";
         throw new StructuredOutputError(
-          structuredOutputErrorMessage(params.model, outcome.notJson, outcome.error),
+          structuredOutputErrorMessage(params.model, outcome.notJson, outcome.error, emptyContent),
           { cause: outcome.error },
         );
       }
