@@ -13,7 +13,7 @@ import { buildResponseFormat } from "../src/structured.js";
 
 const Country = z.object({ country: z.string(), capital: z.string() });
 
-function payload(content: string) {
+function payload(content: unknown) {
   return {
     id: "c1",
     object: "chat.completion",
@@ -264,6 +264,32 @@ describe("chat.completions.parse — empty content", () => {
     const res = new ChatCompletionsResource(http);
     await assert.rejects(
       () => res.parse(PARAMS, Country, { maxRetries: 3 }),
+      (e: unknown) => e instanceof StructuredOutputError && /no text content/.test(e.message),
+    );
+    assert.equal(calls.length, 1);
+  });
+});
+
+describe("chat.completions.parse — content-part arrays", () => {
+  it("concatenates text parts and parses JSON returned via ContentPart[]", async () => {
+    const { http } = mockHttp([
+      payload([
+        { type: "text", text: '{"country": "France",' },
+        { type: "text", text: ' "capital": "Paris"}' },
+      ]),
+    ]);
+    const res = new ChatCompletionsResource(http);
+    const out = await res.parse(PARAMS, Country);
+    assert.equal(out.capital, "Paris");
+  });
+
+  it("array with no text parts is still terminal empty content", async () => {
+    const { http, calls } = mockHttp([
+      payload([{ type: "image_url", image_url: { url: "https://x/y.png" } }]),
+    ]);
+    const res = new ChatCompletionsResource(http);
+    await assert.rejects(
+      () => res.parse(PARAMS, Country, { maxRetries: 2 }),
       (e: unknown) => e instanceof StructuredOutputError && /no text content/.test(e.message),
     );
     assert.equal(calls.length, 1);

@@ -14,7 +14,7 @@
  * The gateway forwards `response_format` to each provider; the SDK only builds
  * the request field and parses the reply.
  */
-import type { ChatCompletionResponse } from "./types.js";
+import type { ChatCompletionResponse, ContentPartText } from "./types.js";
 
 // ── Standard Schema spec (vendored — https://standardschema.dev, MIT) ──────────
 // Copied locally so the SDK depends on no validation library. Zod, Valibot and
@@ -183,7 +183,19 @@ export async function tryParse(schema: unknown, content: string): Promise<ParseO
 
 export function extractContent(resp: ChatCompletionResponse): string {
   const content = resp.choices?.[0]?.message?.content;
-  return typeof content === "string" ? content : "";
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    // Providers may return text as content parts; concatenate them so valid
+    // JSON in a text part isn't misclassified as an empty (refusal) response.
+    return content
+      .filter(
+        (p): p is ContentPartText =>
+          (p as ContentPartText)?.type === "text" && typeof (p as ContentPartText).text === "string",
+      )
+      .map((p) => p.text)
+      .join("");
+  }
+  return "";
 }
 
 function errText(error: unknown): string {
