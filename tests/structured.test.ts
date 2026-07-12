@@ -6,6 +6,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { z } from "zod";
+import * as v from "valibot";
 import { ChatCompletionsResource } from "../src/resources/chat.js";
 import { StructuredOutputError } from "../src/errors.js";
 import { buildResponseFormat } from "../src/structured.js";
@@ -162,19 +163,47 @@ describe("chat.completions.parse — non-Zod Standard Schema validators", () => 
   });
 
   it("throws a clear, vendor-named error for validators without a converter", async () => {
-    const valibotLike = {
+    const noConverter = {
       "~standard": {
         version: 1,
-        vendor: "valibot",
+        vendor: "acme",
         validate: (value: unknown) => ({ value }),
       },
     };
     await assert.rejects(
-      () => buildResponseFormat(valibotLike),
+      () => buildResponseFormat(noConverter),
       (e: unknown) =>
         e instanceof Error &&
-        e.message.includes("valibot") &&
+        e.message.includes("acme") &&
         /pass a raw JSON schema `\{ name, schema \}`/i.test(e.message),
+    );
+  });
+});
+
+describe("chat.completions.parse — Valibot", () => {
+  const VCountry = v.object({ country: v.string(), capital: v.string() });
+
+  it("derives the wire schema via @valibot/to-json-schema and validates the reply", async () => {
+    const { http, calls } = mockHttp([
+      payload(JSON.stringify({ country: "France", capital: "Paris" })),
+    ]);
+    const res = new ChatCompletionsResource(http);
+    const out = await res.parse(PARAMS, VCountry);
+    assert.equal(out.capital, "Paris");
+
+    const body = calls[0].body;
+    assert.equal(body.response_format.type, "json_schema");
+    assert.ok(body.response_format.json_schema.schema.properties.capital);
+  });
+
+  it("throws StructuredOutputError (shape mismatch) when JSON is valid but wrong", async () => {
+    const { http } = mockHttp([payload(JSON.stringify({ country: "France" }))]); // missing capital
+    const res = new ChatCompletionsResource(http);
+    await assert.rejects(
+      () => res.parse(PARAMS, VCountry),
+      (e: unknown) =>
+        e instanceof StructuredOutputError &&
+        /did not match the requested schema/.test(e.message),
     );
   });
 });

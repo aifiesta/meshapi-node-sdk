@@ -4,8 +4,10 @@
  * Two schema inputs:
  *   1. A **Standard Schema** validator (Zod v3.24+, Valibot, ArkType, …) — used
  *      for runtime validation + output typing. JSON-schema derivation for the
- *      wire is currently supported for Zod (v4 `z.toJSONSchema`, dynamic-imported
- *      so the base SDK stays dependency-free).
+ *      wire: Zod via v4 `z.toJSONSchema`, Valibot via `@valibot/to-json-schema`
+ *      (both dynamic-imported optional peers, so the base SDK stays
+ *      dependency-free), any other vendor via its own `toJsonSchema()` method
+ *      (e.g. ArkType).
  *   2. A raw **JSON schema** object — sent as-is, returned via `JSON.parse`
  *      (no runtime validation).
  *
@@ -83,7 +85,7 @@ export function isStandardSchema(x: unknown): x is StandardSchemaV1 {
   );
 }
 
-/** Derive the wire JSON schema from a Standard Schema (Zod only, for now). */
+/** Derive the wire JSON schema from a Standard Schema (Zod, Valibot, or any vendor exposing `toJsonSchema()`). */
 async function toJsonSchema(schema: StandardSchemaV1): Promise<Record<string, unknown>> {
   const vendor = schema["~standard"].vendor;
   if (vendor === "zod") {
@@ -106,9 +108,30 @@ async function toJsonSchema(schema: StandardSchemaV1): Promise<Record<string, un
     }
     return (fn as (s: unknown) => Record<string, unknown>)(schema);
   }
-  // Non-Zod Standard Schema validators (Valibot, ArkType, …) may expose their
-  // own JSON-schema converter — ArkType, for example, has `.toJsonSchema()`.
-  // Use it when present so those validators work without a raw JSON schema.
+  if (vendor === "valibot") {
+    let mod: Record<string, unknown>;
+    try {
+      mod = (await import("@valibot/to-json-schema")) as unknown as Record<string, unknown>;
+    } catch {
+      throw new Error(
+        "A Valibot schema was passed but `@valibot/to-json-schema` is not installed. " +
+          "Install @valibot/to-json-schema, or pass a raw JSON schema `{ name, schema }`.",
+      );
+    }
+    const fn =
+      (mod.toJsonSchema as unknown) ??
+      ((mod.default as Record<string, unknown> | undefined)?.toJsonSchema as unknown);
+    if (typeof fn !== "function") {
+      throw new Error(
+        "`@valibot/to-json-schema` does not export `toJsonSchema`. Upgrade the package, " +
+          "or pass a raw JSON schema `{ name, schema }`.",
+      );
+    }
+    return (fn as (s: unknown) => Record<string, unknown>)(schema);
+  }
+  // Other Standard Schema validators may expose their own JSON-schema
+  // converter — ArkType, for example, has `.toJsonSchema()`. Use it when
+  // present so those validators work without a raw JSON schema.
   const converter =
     (schema as { toJsonSchema?: unknown }).toJsonSchema ??
     (schema as { toJSONSchema?: unknown }).toJSONSchema;
@@ -118,7 +141,8 @@ async function toJsonSchema(schema: StandardSchemaV1): Promise<Record<string, un
   throw new Error(
     `Cannot derive a JSON schema from a "${vendor}" schema: it does not expose a ` +
       `\`toJsonSchema()\` method. Pass a raw JSON schema \`{ name, schema }\`, or use a ` +
-      `Zod (v4) schema or another validator that exposes \`toJsonSchema()\` (e.g. ArkType).`,
+      `Zod (v4) schema, a Valibot schema (with \`@valibot/to-json-schema\` installed), or ` +
+      `another validator that exposes \`toJsonSchema()\` (e.g. ArkType).`,
   );
 }
 

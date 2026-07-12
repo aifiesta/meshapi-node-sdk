@@ -159,14 +159,13 @@ const country = await client.chat.completions.parse<Country>(
 );
 ```
 
-> `zod` is an **optional peer dependency** — the SDK ships with no runtime
-> dependencies and only imports zod (v4, for JSON-schema derivation) when you
-> pass a Zod schema. The raw path needs nothing.
->
-> Non-Zod Standard Schema validators are supported only if they expose a
-> `toJsonSchema()` method (e.g. ArkType), which the SDK calls to derive the wire
-> schema. For validators without one (e.g. Valibot), pass a raw JSON schema
-> `{ name, schema }` instead.
+> The SDK ships with no runtime dependencies. JSON-schema derivation is loaded
+> on demand per vendor: a Zod schema dynamic-imports `zod` (v4, optional peer);
+> a Valibot schema dynamic-imports `@valibot/to-json-schema` (optional peer —
+> install it alongside valibot); other Standard Schema validators are supported
+> if they expose a `toJsonSchema()` method (e.g. ArkType). No converter
+> available? Pass a raw JSON schema `{ name, schema }` — that path needs
+> nothing.
 
 ### Auto-retry (opt-in)
 

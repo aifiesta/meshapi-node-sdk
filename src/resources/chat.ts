@@ -96,10 +96,12 @@ export class ChatCompletionsResource {
   /**
    * Structured (JSON-schema-constrained) completion. Non-streaming.
    *
-   * Pass a **Standard Schema** validator (Zod v3.24+, Valibot, ArkType — Zod
-   * needs v4 for JSON-schema derivation) to get a runtime-validated, typed
-   * result, or a raw JSON schema object (returned via `JSON.parse`, unvalidated;
-   * use the `<T>` type parameter for typing). With `opts.maxRetries > 0`, a
+   * Pass a **Standard Schema** validator to get a runtime-validated, typed
+   * result — Zod v4 (JSON-schema derivation needs `z.toJSONSchema`), Valibot
+   * (install the optional `@valibot/to-json-schema` peer), or any vendor
+   * exposing `toJsonSchema()` (e.g. ArkType) — or a raw JSON schema object
+   * (returned via `JSON.parse`, unvalidated; use the `<T>` type parameter for
+   * typing). With `opts.maxRetries > 0`, a
    * response that fails validation is fed back to the model with the error
    * appended. Throws {@link StructuredOutputError} if it still can't be parsed —
    * most often because the model doesn't support structured outputs.
