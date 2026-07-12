@@ -170,7 +170,9 @@ const country = await client.chat.completions.parse<Country>(
 ### Auto-retry (opt-in)
 
 Set `maxRetries` to feed a failed response back to the model with the validation
-error appended. Each retry is a billed call; the default is `0`.
+error appended. Each retry is a billed call; the default is `0`. An empty
+response (a refusal or a tool call instead of text) is terminal and never
+retried — a correction prompt can't fix it.
 
 ```ts
 await client.chat.completions.parse(params, Country, { maxRetries: 3 });

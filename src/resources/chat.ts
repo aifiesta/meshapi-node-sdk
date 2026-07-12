@@ -103,7 +103,8 @@ export class ChatCompletionsResource {
    * (returned via `JSON.parse`, unvalidated; use the `<T>` type parameter for
    * typing). With `opts.maxRetries > 0`, a
    * response that fails validation is fed back to the model with the error
-   * appended. Throws {@link StructuredOutputError} if it still can't be parsed —
+   * appended; an empty response (a refusal or tool call) is terminal and never
+   * retried. Throws {@link StructuredOutputError} if it still can't be parsed —
    * most often because the model doesn't support structured outputs.
    *
    * @example
@@ -157,8 +158,11 @@ export class ChatCompletionsResource {
       const content = extractContent(resp);
       const outcome = await tryParse(schema, content);
       if (outcome.ok) return outcome.value;
-      if (attempt >= maxRetries) {
-        const emptyContent = content.trim() === "";
+      // Empty content means a refusal or tool call, not malformed JSON — a
+      // correction turn can't fix it, and echoing an empty assistant message
+      // (with any tool_calls dropped) would corrupt the retried conversation.
+      const emptyContent = content.trim() === "";
+      if (emptyContent || attempt >= maxRetries) {
         throw new StructuredOutputError(
           structuredOutputErrorMessage(params.model, outcome.notJson, outcome.error, emptyContent),
           { cause: outcome.error },

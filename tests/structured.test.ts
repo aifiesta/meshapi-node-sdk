@@ -235,4 +235,37 @@ describe("chat.completions.parse — empty content", () => {
         !/does not support structured outputs/.test(e.message),
     );
   });
+
+  it("empty content is terminal even with maxRetries — no billed correction call", async () => {
+    const { http, calls } = mockHttp([payload(""), payload("unreached")]);
+    const res = new ChatCompletionsResource(http);
+    await assert.rejects(
+      () => res.parse(PARAMS, Country, { maxRetries: 2 }),
+      (e: unknown) => e instanceof StructuredOutputError && /no text content/.test(e.message),
+    );
+    assert.equal(calls.length, 1);
+  });
+
+  it("null content (tool call / refusal shape) is terminal, not retried", async () => {
+    const resp = {
+      id: "c1",
+      object: "chat.completion",
+      created: 0,
+      model: "m",
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: null, tool_calls: [{ id: "t1" }] },
+          finish_reason: "tool_calls",
+        },
+      ],
+    };
+    const { http, calls } = mockHttp([resp]);
+    const res = new ChatCompletionsResource(http);
+    await assert.rejects(
+      () => res.parse(PARAMS, Country, { maxRetries: 3 }),
+      (e: unknown) => e instanceof StructuredOutputError && /no text content/.test(e.message),
+    );
+    assert.equal(calls.length, 1);
+  });
 });
