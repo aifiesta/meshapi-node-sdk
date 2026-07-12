@@ -27,8 +27,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts",
-    "test:unit": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts",
+    "test": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts",
+    "test:unit": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
@@ -42,12 +42,27 @@
   "optionalDependencies": {
     "ws": "^8.18.0"
   },
+  "peerDependencies": {
+    "@valibot/to-json-schema": "^1.0.0",
+    "zod": "^4.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@valibot/to-json-schema": {
+      "optional": true
+    },
+    "zod": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "@valibot/to-json-schema": "^1.0.0",
+    "valibot": "^1.0.0",
     "@types/ws": "^8.5.10",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "zod": "^4.0.0"
   },
   "overrides": {
     "esbuild": "^0.28.1"

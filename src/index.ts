@@ -149,8 +149,13 @@ export class MeshAPI {
 
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
-export { MeshAPIApiError } from "./errors.js";
+export { MeshAPIApiError, StructuredOutputError } from "./errors.js";
 export type { MeshAPIConfig } from "./http.js";
+export type {
+  StandardSchemaV1,
+  JsonSchemaInput,
+  StructuredParseOptions,
+} from "./structured.js";
 
 export type {
   // Shared
