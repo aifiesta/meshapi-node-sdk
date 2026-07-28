@@ -26,7 +26,7 @@
     "test:tool-calling": "node --test test-tool-calling.js",
     "test:images-edit": "node --test test-images-edit.js",
     "test:responses": "node --test test-responses.js",
-    "test:smoke": "node --test test-models.js test-chat.js test-inference.js test-stream.js test-errors.js",
+    "test:smoke": "node --test test-models.js test-chat.js test-stream.js test-errors.js && node --test --test-name-pattern=\"embeddings|responses\" test-inference.js",
     "test:all": "node --test --test-reporter=spec"
   }
 }
