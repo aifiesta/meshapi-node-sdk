@@ -8,6 +8,12 @@ on:
     tags: ["v*"]
   pull_request:            # run on PRs to any base (feature-branch stacks included)
   workflow_dispatch:
+  schedule:
+    # Staging canary (MESH-368). The MESHAPI_* secrets already point at staging,
+    # so these runs exercise the live staging API on a fixed cadence — independent
+    # of whether anyone opened a PR. Two cadences:
+    - cron: "17 */2 * * *"   # every 2h — cheap smoke subset (fast outage detection)
+    - cron: "0 7 * * *"      # daily 07:00 UTC — full live suite
 
 env:
   # Secrets (set in repo → Settings → Secrets and variables → Actions → Secrets)
@@ -50,9 +56,26 @@ jobs:
         working-directory: livetests
         run: npm install
 
-      - name: Run live tests
+      # Smoke = fast subset run by the 2-hourly staging canary (models list, one
+      # chat, embeddings/responses, one stream, 401/404). Every other trigger
+      # (push, PR, manual, daily cron) runs the full suite — PR behavior unchanged.
+      - name: Determine suite mode
+        id: mode
+        run: |
+          if [ "${{ github.event.schedule }}" = "17 */2 * * *" ]; then
+            echo "value=smoke" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=full" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run live tests (${{ steps.mode.outputs.value }})
         working-directory: livetests
-        run: npm run test:all
+        run: |
+          if [ "${{ steps.mode.outputs.value }}" = "smoke" ]; then
+            npm run test:smoke
+          else
+            npm run test:all
+          fi
 
       - name: Write job summary
         if: always()
@@ -61,6 +84,8 @@ jobs:
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|---|---|" >> $GITHUB_STEP_SUMMARY
           echo "| Status | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }}${{ github.event.schedule && format(' (`{0}`)', github.event.schedule) || '' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Suite | ${{ steps.mode.outputs.value }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Node | 22 |" >> $GITHUB_STEP_SUMMARY
           echo "| Base URL | \`${{ env.MESHAPI_BASE_URL }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Model | \`${{ env.MESHAPI_MODEL }}\` |" >> $GITHUB_STEP_SUMMARY
@@ -73,5 +98,5 @@ jobs:
           webhook-type: incoming-webhook
           payload: |
             {
-              "text": "${{ job.status == 'success' && '✅' || '❌' }} *Node.js SDK Live Tests* — ${{ job.status }}\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run> · ${{ github.head_ref || github.ref_name }}"
+              "text": "❌ *Node.js SDK Live Tests* — ${{ job.status }} · ${{ steps.mode.outputs.value }} suite\nTrigger: `${{ github.event_name }}${{ github.event.schedule && format(' {0}', github.event.schedule) || '' }}` · Base URL: `${{ env.MESHAPI_BASE_URL }}`\n<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run> · ${{ github.head_ref || github.ref_name }}"
             }
