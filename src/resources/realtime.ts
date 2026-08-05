@@ -6,6 +6,7 @@
  * header per the MeshAPI wire contract.
  */
 
+import { SDK_VERSION_HEADER, SDK_VERSION_VALUE } from "../http.js";
 import type { MeshAPIConfig } from "../http.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -271,9 +272,6 @@ export class RealtimeSession {
 }
 
 // ── Resource ──────────────────────────────────────────────────────────────────
-
-const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
-const SDK_VERSION_VALUE = "node/0.1.0";
 
 /** Provides access to the MeshAPI WebSocket realtime endpoint. */
 export class RealtimeResource {
