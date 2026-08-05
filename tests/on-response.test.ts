@@ -225,6 +225,59 @@ describe("onResponse: safety", () => {
     assert.equal(reply.choices[0].message?.content, "hi");
   });
 
+  it("a rejecting async hook does not break the request or leak an unhandled rejection", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+
+    try {
+      const client = new MeshAPI({
+        baseUrl: BASE,
+        token: TOKEN,
+        fetch: async () => jsonResponse(CHAT_OK, "req_01ASYNCTHROW"),
+        // An async hook whose promise rejects. A plain synchronous try/catch
+        // around the call would not catch this, and the rejection would surface
+        // as an unhandledRejection — which can terminate the process.
+        onResponse: async () => {
+          throw new Error("async logging blew up");
+        },
+      });
+
+      const reply = await client.chat.completions.create({
+        model: "openai/gpt-4o-mini",
+        messages: [{ role: "user", content: "hi" }],
+      });
+      assert.equal(reply.choices[0].message?.content, "hi");
+
+      // Unhandled rejections are reported on a later turn of the microtask
+      // queue, so give the loop a chance to surface one before asserting.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.deepEqual(unhandled, [], "hook rejection must not escape as an unhandled rejection");
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  it("an async hook is not awaited, so it cannot delay the response", async () => {
+    let hookSettled = false;
+    const client = new MeshAPI({
+      baseUrl: BASE,
+      token: TOKEN,
+      fetch: async () => jsonResponse(CHAT_OK, "req_01ASYNCSLOW"),
+      onResponse: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        hookSettled = true;
+      },
+    });
+
+    await client.chat.completions.create({
+      model: "openai/gpt-4o-mini",
+      messages: [{ role: "user", content: "hi" }],
+    });
+
+    assert.equal(hookSettled, false, "the response must not wait for a slow async hook");
+  });
+
   it("omitting the hook leaves behaviour unchanged", async () => {
     const client = new MeshAPI({
       baseUrl: BASE,

@@ -1,7 +1,7 @@
-﻿import { MeshAPIApiError } from "./errors.js";
+import { MeshAPIApiError } from "./errors.js";
 import type { ChatCompletionChunk, RequestOptions } from "./types.js";
 
-// â”€â”€ Client config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Client config ─────────────────────────────────────────────────────────────
 
 export interface MeshAPIConfig {
   /**
@@ -13,9 +13,9 @@ export interface MeshAPIConfig {
   /**
    * Bearer token for authentication. One instance = one auth realm.
    *
-   * - Data-plane:   `rsk_<ULID>` â€” for chat completions
-   * - Control-plane: `<supabase-jwt>` â€” for templates, models
-   * - Webhook:       `<WEBHOOK_API_KEY>` â€” for webhook endpoints
+   * - Data-plane:   `rsk_<ULID>` — for chat completions
+   * - Control-plane: `<supabase-jwt>` — for templates, models
+   * - Webhook:       `<WEBHOOK_API_KEY>` — for webhook endpoints
    */
   token: string;
 
@@ -45,7 +45,7 @@ export interface MeshAPIConfig {
   maxRetries?: number;
 
   /**
-   * Called once per HTTP response, for every request the client makes â€”
+   * Called once per HTTP response, for every request the client makes —
    * streaming and non-streaming, successful and failed.
    *
    * The gateway returns a request id in the `x-request-id` response header.
@@ -54,7 +54,16 @@ export interface MeshAPIConfig {
    * surfaces it, so a slow-but-successful request can be correlated with
    * server-side logs.
    *
-   * Exceptions thrown by the hook are swallowed and never affect the request.
+   * Failures in the hook never affect the request: a synchronous throw is
+   * swallowed, and so is a rejection from an `async` hook.
+   *
+   * An `async` hook is accepted and **not awaited** — the response is returned as
+   * soon as the hook is invoked, so logging cannot add latency. Anything that
+   * must happen before the caller sees the response has to be synchronous.
+   *
+   * Typed as returning `void` rather than `void | Promise<void>` deliberately:
+   * TypeScript's void-return rule already permits an `async` hook, while a union
+   * would reject ordinary concise bodies such as `(info) => buffer.push(info)`.
    *
    * @example
    * ```ts
@@ -73,7 +82,7 @@ export interface MeshAPIConfig {
 /** Metadata passed to {@link MeshAPIConfig.onResponse} for each HTTP response. */
 export interface ResponseInfo {
   /**
-   * Value of the `x-request-id` response header â€” quote this when contacting
+   * Value of the `x-request-id` response header — quote this when contacting
    * support. `undefined` when the response carries no such header, which is the
    * case for the third-party signed-URL PUT performed by `rag.uploadFile()`.
    */
@@ -92,7 +101,7 @@ export interface ResponseInfo {
    * Milliseconds from issuing the request until response headers arrived.
    *
    * For streaming requests this is time-to-first-byte, not the duration of the
-   * whole stream â€” the body is still being consumed when this hook fires.
+   * whole stream — the body is still being consumed when this hook fires.
    */
   durationMs: number;
 }
@@ -115,7 +124,7 @@ export const SDK_VERSION_VALUE = "node/0.1.1";
 /**
  * Wrap a fetch implementation so `onResponse` fires for every response.
  *
- * Wrapping at this single point means all request paths are covered â€”
+ * Wrapping at this single point means all request paths are covered —
  * `request`, `requestRaw`, `stream`, `postMultipart` and `rawFetch` all go
  * through `fetchImpl`. Returns the original function untouched when no hook is
  * configured, so there is no overhead for callers that do not use it.
@@ -133,21 +142,32 @@ function wrapFetch(
     const startedAt = Date.now();
     const response = await baseFetch(input, init);
     try {
-      onResponse({
+      // Typed `unknown` because the declared return type is `void` while an
+      // `async` hook actually returns a promise at runtime.
+      const result: unknown = onResponse({
         requestId: response.headers.get("x-request-id") ?? undefined,
         status: response.status,
         method: init?.method ?? "GET",
         url: typeof input === "string" ? input : String(input),
         durationMs: Date.now() - startedAt,
       });
+
+      // An async hook returns a promise. It is deliberately not awaited — the
+      // response must not wait on logging — but an unobserved rejection would
+      // become an unhandled rejection and can terminate the process, so attach
+      // a catch. Guarded by a thenable check so the common synchronous hook
+      // allocates nothing.
+      if (typeof (result as PromiseLike<void> | undefined)?.then === "function") {
+        void (result as Promise<void>).then(undefined, () => {});
+      }
     } catch {
-      // A logging hook must never break the request it is observing.
+      // A synchronous throw from the hook must not break the request either.
     }
     return response;
   };
 }
 
-// â”€â”€ HTTP client â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── HTTP client ───────────────────────────────────────────────────────────────
 
 export class HttpClient {
   private readonly baseUrl: string;
@@ -227,7 +247,7 @@ export class HttpClient {
       Authorization: `Bearer ${this.token}`,
       Accept: "application/json",
       [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
-      // Do NOT set Content-Type â€” fetch sets it automatically with the multipart boundary
+      // Do NOT set Content-Type — fetch sets it automatically with the multipart boundary
     };
 
     let attempt = 0;
@@ -293,7 +313,7 @@ export class HttpClient {
     return response;
   }
 
-  // â”€â”€ Private â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Private ─────────────────────────────────────────────────────────────────
 
   private buildHeaders(): Record<string, string> {
     return {
@@ -402,7 +422,7 @@ export class HttpClient {
     const baseMs =
       retryAfterMs ?? BACKOFF_BASE_MS * Math.pow(2, attempt);
     const capped = Math.min(baseMs, BACKOFF_MAX_MS);
-    const jitter = capped * (0.8 + Math.random() * 0.4); // Â±20%
+    const jitter = capped * (0.8 + Math.random() * 0.4); // ±20%
     return jitter;
   }
 
@@ -414,7 +434,7 @@ export class HttpClient {
   }
 }
 
-// â”€â”€ SSE parser â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── SSE parser ────────────────────────────────────────────────────────────────
 
 /**
  * Parse a Server-Sent Events stream from a fetch Response into an async
@@ -422,8 +442,8 @@ export class HttpClient {
  *
  * Handles:
  * - Partial chunks (remainder buffer strategy)
- * - [DONE] sentinel â€” stops iteration
- * - Mid-stream error frames â€” throws MeshAPIApiError
+ * - [DONE] sentinel — stops iteration
+ * - Mid-stream error frames — throws MeshAPIApiError
  * - TextDecoder with `fatal: false` to survive binary padding bytes
  */
 export async function* parseSSEStream(
@@ -462,7 +482,7 @@ export async function* parseJSONSSEStream<T>(
       // Split on double-newline (SSE frame delimiter)
       const frames = remainder.split("\n\n");
 
-      // Last element is the incomplete frame (or empty string) â€” keep as new remainder
+      // Last element is the incomplete frame (or empty string) — keep as new remainder
       remainder = frames.pop() ?? "";
 
       for (const frame of frames) {
@@ -511,7 +531,7 @@ function tryParseJSONSSEFrame<T>(frame: string): T | null {
     try {
       parsed = JSON.parse(data);
     } catch {
-      // Malformed JSON in SSE frame â€” skip silently
+      // Malformed JSON in SSE frame — skip silently
       continue;
     }
 
@@ -542,7 +562,7 @@ function tryParseJSONSSEFrame<T>(frame: string): T | null {
       continue;
     }
 
-    // Normal chunk â€” parsed is Record<string,unknown> from isRecord guard; cast via unknown
+    // Normal chunk — parsed is Record<string,unknown> from isRecord guard; cast via unknown
     return parsed as unknown as T;
   }
 
@@ -553,12 +573,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// â”€â”€ Lazy SSE iterable helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Lazy SSE iterable helper ───────────────────────────────────────────────────
 
 /**
  * Returns a lazy `AsyncIterable<ChatCompletionChunk>` that only initiates the
  * streaming POST when the caller begins iterating. Shared by all resources that
- * stream SSE (chat/completions, responses, â€¦) so the lazy-init machinery and
+ * stream SSE (chat/completions, responses, …) so the lazy-init machinery and
  * iterator protocol live in one place.
  */
 export function makeLazySSEIterable<T = ChatCompletionChunk>(
@@ -579,8 +599,8 @@ export function makeLazySSEIterable<T = ChatCompletionChunk>(
 
       return {
         async next(): Promise<IteratorResult<T>> {
-          // `init()` is called at most once: `for await...of` â€” the only
-          // sensible consumer of an SSE stream â€” awaits each next() before
+          // `init()` is called at most once: `for await...of` — the only
+          // sensible consumer of an SSE stream — awaits each next() before
           // issuing the next, so concurrent calls here are unreachable.
           if (!iterator) {
             iterator = await init();
