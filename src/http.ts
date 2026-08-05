@@ -94,7 +94,18 @@ export interface ResponseInfo {
   /** HTTP method of the request. */
   method: string;
 
-  /** Full request URL. */
+  /**
+   * Request URL.
+   *
+   * For gateway requests this is the full URL including its query string, which
+   * carries only non-sensitive parameters such as `?limit=20` — gateway auth
+   * travels in the `Authorization` header, never the URL.
+   *
+   * For requests to any other host the query string is **removed**. The only
+   * such request the SDK makes is the signed-storage PUT inside
+   * `rag.uploadFile()`, whose query is a short-lived upload credential; passing
+   * it to a logging callback would persist a reusable write capability.
+   */
   url: string;
 
   /**
@@ -122,6 +133,36 @@ export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
 export const SDK_VERSION_VALUE = "node/0.1.1";
 
 /**
+ * Build the URL reported to `onResponse`, with third-party credentials removed.
+ *
+ * `rag.uploadFile()` PUTs file bytes to a signed storage URL whose query string
+ * *is* the credential — for GCS that is `X-Goog-Credential` plus
+ * `X-Goog-Signature`, several hundred characters granting write access until it
+ * expires. Handing that to a logging callback would persist a live upload
+ * capability in the caller's logs, so the query is dropped for every host other
+ * than the gateway.
+ *
+ * Fails safe: if `baseUrl` or the request URL cannot be parsed, the query is
+ * dropped rather than assumed harmless.
+ */
+function redactUrl(raw: string, gatewayHost: string): string {
+  const stripQuery = () => {
+    const q = raw.indexOf("?");
+    return q === -1 ? raw : raw.slice(0, q);
+  };
+  if (!gatewayHost) return stripQuery();
+  try {
+    const url = new URL(raw);
+    if (url.host === gatewayHost) return raw;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return stripQuery();
+  }
+}
+
+/**
  * Wrap a fetch implementation so `onResponse` fires for every response.
  *
  * Wrapping at this single point means all request paths are covered —
@@ -135,8 +176,16 @@ export const SDK_VERSION_VALUE = "node/0.1.1";
 function wrapFetch(
   baseFetch: typeof fetch,
   onResponse: MeshAPIConfig["onResponse"],
+  baseUrl: string,
 ): typeof fetch {
   if (!onResponse) return baseFetch;
+
+  let gatewayHost = "";
+  try {
+    gatewayHost = new URL(baseUrl).host;
+  } catch {
+    // Leave empty — redactUrl then strips the query from every URL.
+  }
 
   return async function fetchWithResponseHook(input, init) {
     const startedAt = Date.now();
@@ -148,7 +197,7 @@ function wrapFetch(
         requestId: response.headers.get("x-request-id") ?? undefined,
         status: response.status,
         method: init?.method ?? "GET",
-        url: typeof input === "string" ? input : String(input),
+        url: redactUrl(typeof input === "string" ? input : String(input), gatewayHost),
         durationMs: Date.now() - startedAt,
       });
 
@@ -182,7 +231,11 @@ export class HttpClient {
     this.token = config.token;
     this.defaultTimeoutMs = config.timeoutMs ?? 60_000;
     this.defaultSignal = config.signal;
-    this.fetchImpl = wrapFetch(config.fetch ?? globalThis.fetch.bind(globalThis), config.onResponse);
+    this.fetchImpl = wrapFetch(
+      config.fetch ?? globalThis.fetch.bind(globalThis),
+      config.onResponse,
+      this.baseUrl,
+    );
     this.maxRetries = config.maxRetries ?? 3;
   }
 

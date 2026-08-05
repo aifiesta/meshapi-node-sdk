@@ -116,6 +116,76 @@ describe("onResponse: successful requests", () => {
   });
 });
 
+describe("onResponse: url redaction", () => {
+  it("keeps the query string for gateway requests", async () => {
+    const { client, seen } = harness(async () => jsonResponse([], "req_01QUERY"));
+    await client.models.list({ free: true });
+
+    assert.match(seen[0].url, /^https:\/\/api\.meshapi\.test\/v1\/models\?/);
+    assert.match(seen[0].url, /free=true/, "non-sensitive gateway query params stay visible");
+  });
+
+  it("strips the credential query from a third-party signed upload URL", async () => {
+    // Mirrors a real GCS V4 signed URL: the query IS the write credential.
+    const SIGNED =
+      "https://storage.googleapis.com/mesh-rag-files-prod/abc/file.txt" +
+      "?X-Goog-Algorithm=GOOG4-RSA-SHA256" +
+      "&X-Goog-Credential=svc%40project.iam.gserviceaccount.com%2F20260803%2Fauto%2Fstorage%2Fgoog4_request" +
+      "&X-Goog-Date=20260803T120000Z&X-Goog-Expires=900" +
+      "&X-Goog-SignedHeaders=host&X-Goog-Signature=deadbeefcafe0123456789";
+
+    const seen: ResponseInfo[] = [];
+    const client = new MeshAPI({
+      baseUrl: BASE,
+      token: TOKEN,
+      onResponse: (info) => seen.push(info),
+      fetch: async (input) => {
+        const url = String(input);
+        if (url.startsWith(BASE)) {
+          return jsonResponse(
+            { file_id: "f1", signed_url: SIGNED, expires_at: "2030-01-01" },
+            "req_01INIT",
+          );
+        }
+        return new Response(null, { status: 200 });
+      },
+    });
+
+    await client.rag.uploadFile({
+      file_name: "file.txt",
+      mime_type: "text/plain",
+      content: new Uint8Array([1, 2, 3]),
+    });
+
+    assert.equal(seen.length, 2, "init + signed PUT");
+    const put = seen[1];
+
+    assert.equal(
+      put.url,
+      "https://storage.googleapis.com/mesh-rag-files-prod/abc/file.txt",
+      "third-party URL must be reported without its query string",
+    );
+    for (const secret of ["X-Goog-Signature", "X-Goog-Credential", "deadbeefcafe", "gserviceaccount"]) {
+      assert.ok(!put.url.includes(secret), `redacted url must not contain ${secret}`);
+    }
+    assert.equal(put.requestId, undefined, "third-party response carries no gateway request id");
+  });
+
+  it("fails safe by stripping the query when baseUrl is unparseable", async () => {
+    const seen: ResponseInfo[] = [];
+    const client = new MeshAPI({
+      baseUrl: "not-a-valid-url",
+      token: TOKEN,
+      onResponse: (info) => seen.push(info),
+      fetch: async () => jsonResponse([], "req_01ODD"),
+    });
+
+    await client.models.list({ free: true }).catch(() => {});
+    assert.ok(seen.length > 0);
+    assert.ok(!seen[0].url.includes("?"), "unknown gateway host must not expose any query string");
+  });
+});
+
 describe("onResponse: failures and retries", () => {
   it("still fires on an error response, alongside MeshAPIApiError.requestId", async () => {
     const { client, seen } = harness(async () =>
