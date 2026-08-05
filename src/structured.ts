@@ -68,6 +68,12 @@ export interface StructuredParseOptions {
   signal?: AbortSignal;
   /** Per-request timeout override in milliseconds. */
   timeoutMs?: number;
+  /**
+   * Client-supplied request id, sent as `X-Request-Id` and echoed by the
+   * server. Must match `^[A-Za-z0-9._:-]{1,64}$`. Note: correction-retry
+   * turns reuse the same id, so all attempts correlate to one value.
+   */
+  requestId?: string;
 }
 
 export type ParseOutcome =

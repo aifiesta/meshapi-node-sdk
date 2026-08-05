@@ -135,10 +135,14 @@ export class ChatCompletionsResource {
       throw new RangeError("maxRetries must be a non-negative safe integer");
     }
     let httpOpts: RequestOptions | undefined;
-    if (opts && (opts.signal !== undefined || opts.timeoutMs !== undefined)) {
+    if (
+      opts &&
+      (opts.signal !== undefined || opts.timeoutMs !== undefined || opts.requestId !== undefined)
+    ) {
       httpOpts = {};
       if (opts.signal !== undefined) httpOpts.signal = opts.signal;
       if (opts.timeoutMs !== undefined) httpOpts.timeoutMs = opts.timeoutMs;
+      if (opts.requestId !== undefined) httpOpts.requestId = opts.requestId;
     }
 
     const responseFormat = await buildResponseFormat(schema);

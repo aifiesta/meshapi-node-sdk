@@ -10,6 +10,32 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Per-request timeout override in milliseconds. Ignored for streaming. */
   timeoutMs?: number;
+  /**
+   * Client-supplied request id, sent as the `X-Request-Id` header and echoed
+   * back by the server on the response (readable via `_request_id` on
+   * successful responses and `err.requestId` on errors). Useful for
+   * correlating SDK calls with server logs and support tickets.
+   *
+   * Must match `^[A-Za-z0-9._:-]{1,64}$` — the server silently ignores
+   * non-conforming values and mints its own `req_<ULID>` instead, so the SDK
+   * rejects invalid values with a `TypeError` before sending the request.
+   */
+  requestId?: string;
+}
+
+/**
+ * Response metadata mixed into every top-level response object returned by
+ * resource methods. Populated from the `X-Request-Id` response header, which
+ * the server sets on every response (format `req_<ULID>`, or an echo of the
+ * client-supplied {@link RequestOptions.requestId}).
+ */
+export interface ResponseRequestIdMeta {
+  /**
+   * Server `X-Request-Id` for this response. Non-enumerable at runtime, so it
+   * never appears in `JSON.stringify` output or `Object.keys`. Quote this id
+   * in support tickets to correlate with server logs.
+   */
+  readonly _request_id?: string;
 }
 
 // ── Chat ──────────────────────────────────────────────────────────────────────
@@ -194,7 +220,7 @@ export interface ChatCompletionChoice {
   logprobs: Record<string, unknown> | null;
 }
 
-export interface ChatCompletionResponse {
+export interface ChatCompletionResponse extends ResponseRequestIdMeta {
   id: string;
   object: string;
   created: number;
@@ -272,7 +298,7 @@ export interface ModelPricing {
   source_url?: string | null;
 }
 
-export interface ModelInfo {
+export interface ModelInfo extends ResponseRequestIdMeta {
   id: string;
   name: string;
   context_length: number | null;
@@ -356,7 +382,7 @@ export interface UpdateTemplateParams {
   variables?: string[];
 }
 
-export interface TemplateSummary {
+export interface TemplateSummary extends ResponseRequestIdMeta {
   id: string;
   name: string;
   owner: string | null;
@@ -435,7 +461,7 @@ export interface EmbeddingsUsage {
   total_tokens: number;
 }
 
-export interface EmbeddingsResponse {
+export interface EmbeddingsResponse extends ResponseRequestIdMeta {
   object: string;
   data: EmbeddingItem[];
   model: string;
@@ -513,7 +539,7 @@ export interface ResponsesUsage {
   classifier_tokens?: number;
 }
 
-export interface ResponsesResponse {
+export interface ResponsesResponse extends ResponseRequestIdMeta {
   id?: string;
   object?: string;
   model?: string;
@@ -570,7 +596,7 @@ export interface ModelCompareResult {
   request_id: string;
 }
 
-export interface CompareResponse {
+export interface CompareResponse extends ResponseRequestIdMeta {
   comparison_id: string;
   object: string;
   created: number;
@@ -606,7 +632,7 @@ export interface CreateBatchParams {
   metadata?: Record<string, unknown>;
 }
 
-export interface BatchObject {
+export interface BatchObject extends ResponseRequestIdMeta {
   id: string;
   object?: string;
   endpoint?: string;
@@ -626,7 +652,7 @@ export interface BatchObject {
   [key: string]: unknown;
 }
 
-export interface BatchListResponse {
+export interface BatchListResponse extends ResponseRequestIdMeta {
   object: string;
   data: BatchObject[];
   has_more: boolean;
@@ -676,7 +702,7 @@ export interface ImageUsage {
   output_tokens_details?: Record<string, number>;
 }
 
-export interface ImageGenerationResponse {
+export interface ImageGenerationResponse extends ResponseRequestIdMeta {
   created: number;
   data: ImageItem[];
   background?: string;
@@ -705,13 +731,13 @@ export interface UploadFileParams {
   metadata?: Record<string, unknown>;
 }
 
-export interface InitUploadResponse {
+export interface InitUploadResponse extends ResponseRequestIdMeta {
   file_id: string;
   signed_url: string;
   expires_at: string;
 }
 
-export interface RagFileStatus {
+export interface RagFileStatus extends ResponseRequestIdMeta {
   file_id: string;
   upload_status: string;
   file_name: string;
@@ -729,7 +755,7 @@ export interface RagFileStatus {
   last_error_code?: string | null;
 }
 
-export interface RagFileListResponse {
+export interface RagFileListResponse extends ResponseRequestIdMeta {
   files: RagFileStatus[];
   total: number;
   limit: number;
@@ -754,7 +780,7 @@ export interface BulkEmbedResult {
   error?: string | null;
 }
 
-export interface BulkEmbedResponse {
+export interface BulkEmbedResponse extends ResponseRequestIdMeta {
   results: BulkEmbedResult[];
 }
 
@@ -780,7 +806,7 @@ export interface SearchResult {
   metadata: Record<string, unknown>;
 }
 
-export interface SearchResponse {
+export interface SearchResponse extends ResponseRequestIdMeta {
   results: SearchResult[];
 }
 
@@ -881,7 +907,7 @@ export interface AudioTranslationsParams {
   temperature?: number | null;
 }
 
-export interface TranscriptionResponse {
+export interface TranscriptionResponse extends ResponseRequestIdMeta {
   text: string;
 }
 
@@ -897,7 +923,7 @@ export interface ListVoicesParams {
   voice_ids?: string[];
 }
 
-export interface Voice {
+export interface Voice extends ResponseRequestIdMeta {
   voice_id: string;
   name: string;
   // Optional: minimal voice objects (id + name only) must not break parsing;
@@ -908,7 +934,7 @@ export interface Voice {
   labels?: Record<string, unknown>;
 }
 
-export interface VoicesResponse {
+export interface VoicesResponse extends ResponseRequestIdMeta {
   voices: Voice[];
   // Optional so a response that omits has_more / total_count is not rejected,
   // and an absent pagination flag is distinguishable from a real false.
@@ -949,7 +975,7 @@ export interface VideoGenerationParams {
   priority?: number;
 }
 
-export interface CreateVideoGenerationResponse {
+export interface CreateVideoGenerationResponse extends ResponseRequestIdMeta {
   id: string;
 }
 
@@ -968,7 +994,7 @@ export interface VideoTaskUsage {
   total_tokens: number;
 }
 
-export interface VideoTaskResponse {
+export interface VideoTaskResponse extends ResponseRequestIdMeta {
   id: string;
   status: string;
   model?: string;
@@ -1001,7 +1027,7 @@ export interface ListVideoGenerationsParams {
   offset?: number;
 }
 
-export interface VideoTaskListResponse {
+export interface VideoTaskListResponse extends ResponseRequestIdMeta {
   object?: string;
   data: VideoTaskResponse[];
   has_more: boolean;
@@ -1036,7 +1062,7 @@ export interface ModerationResult {
   [key: string]: unknown;
 }
 
-export interface ModerationResponse {
+export interface ModerationResponse extends ResponseRequestIdMeta {
   id?: string;
   model?: string;
   results: ModerationResult[];
@@ -1063,7 +1089,7 @@ export interface WebSearchResultItem {
   published_date?: string | null;
 }
 
-export interface WebSearchResponse {
+export interface WebSearchResponse extends ResponseRequestIdMeta {
   query: string;
   answer?: string | null;
   results: WebSearchResultItem[];
@@ -1085,7 +1111,7 @@ export interface AutoRouterMeta {
   fallback_reason?: string | null;
 }
 
-export interface RouterSelectResponse {
+export interface RouterSelectResponse extends ResponseRequestIdMeta {
   model: string;
   auto_router: AutoRouterMeta;
   reasoning_effort?: string | null;
@@ -1106,7 +1132,7 @@ export interface ModelSearchParams {
   offset?: number;
 }
 
-export interface ModelsPage {
+export interface ModelsPage extends ResponseRequestIdMeta {
   items: ModelInfo[];
   total: number;
   limit: number;
@@ -1132,7 +1158,7 @@ export interface ResponsesListItem {
   usage_synced?: boolean;
 }
 
-export interface ResponsesListResponse {
+export interface ResponsesListResponse extends ResponseRequestIdMeta {
   object?: string;
   data: ResponsesListItem[];
   has_more?: boolean;

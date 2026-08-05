@@ -27,8 +27,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts",
-    "test:unit": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts",
+    "test": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts tests/request-id.test.ts",
+    "test:unit": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts tests/request-id.test.ts",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

@@ -534,6 +534,37 @@ try {
 | `upstream_error` | 500 | Upstream or server error |
 | `stream_interrupted` | n/a | Mid-stream connection dropped |
 
+## Request IDs
+
+Every response carries an `X-Request-Id` header (format `req_<ULID>`) — quote it in support tickets to correlate with server logs.
+
+**Reading it.** Successful responses expose it as a non-enumerable `_request_id` property (it never shows up in `JSON.stringify`); errors expose it as `err.requestId`:
+
+```ts
+const resp = await client.chat.completions.create({ ... });
+console.log(resp._request_id); // "req_01J..."
+
+try {
+  await client.chat.completions.create({ ... });
+} catch (err) {
+  if (err instanceof MeshAPIApiError) console.error(err.requestId);
+}
+```
+
+**Setting your own.** Pass `requestId` in the per-request options (second argument of every resource method) and the server echoes it back:
+
+```ts
+const resp = await client.chat.completions.create(
+  { model: "openai/gpt-4o-mini", messages: [...] },
+  { requestId: "checkout-flow-42" },
+);
+resp._request_id; // "checkout-flow-42"
+```
+
+The value must be 1–64 characters from `A-Z a-z 0-9 . _ : -` (the server silently ignores anything else); the SDK throws a `TypeError` for invalid values before sending the request.
+
+**Streams.** Streaming iterators don't expose `_request_id` (chunks are yielded lazily with no response handle). To correlate a stream, pass your own `requestId` option and search server logs for that value.
+
 ## Retry and backoff
 
 Retries on 429/502/503/504 with exponential backoff (default 3 retries, 500 ms base, 30 s max). **Streams do not retry.**
@@ -543,6 +574,8 @@ Retries on 429/502/503/504 with exponential backoff (default 3 retries, 500 ms b
 ```ts
 import type {
   MeshAPIConfig,
+  // shared
+  RequestOptions, ResponseRequestIdMeta,
   // chat
   ChatCompletionParams, ChatCompletionResponse, ChatCompletionChunk,
   ChatMessage, Tool, ToolCall,

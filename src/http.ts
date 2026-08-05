@@ -50,6 +50,43 @@ const BACKOFF_BASE_MS = 500;
 const BACKOFF_MAX_MS = 30_000;
 const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
 const SDK_VERSION_VALUE = "node/0.1.0";
+const REQUEST_ID_HEADER = "X-Request-Id";
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
+
+/**
+ * Validate a client-supplied request id before it goes on the wire.
+ * The server silently ignores an `X-Request-Id` that does not match
+ * `^[A-Za-z0-9._:-]{1,64}$` and mints its own — so an invalid value is a
+ * client bug we surface loudly instead of letting the header vanish.
+ */
+function validateRequestId(requestId: string): string {
+  if (typeof requestId !== "string" || !REQUEST_ID_PATTERN.test(requestId)) {
+    throw new TypeError(
+      `Invalid requestId ${JSON.stringify(requestId)}: must be 1-64 characters ` +
+        `matching ^[A-Za-z0-9._:-]{1,64}$ (letters, digits, ".", "_", ":", "-"). ` +
+        "The server would silently ignore this X-Request-Id and mint its own.",
+    );
+  }
+  return requestId;
+}
+
+/**
+ * Attach the server `X-Request-Id` response header to a parsed JSON body as a
+ * non-enumerable `_request_id` property (OpenAI SDK parity). Non-enumerable so
+ * `JSON.stringify(response)` and `Object.keys(response)` are unchanged.
+ * No-op for non-object bodies (arrays, strings, null).
+ */
+function attachResponseRequestId<T>(parsed: T, response: Response): T {
+  if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+    Object.defineProperty(parsed, "_request_id", {
+      value: response.headers.get("x-request-id") ?? undefined,
+      enumerable: false,
+      writable: false,
+      configurable: true,
+    });
+  }
+  return parsed;
+}
 
 // ── HTTP client ───────────────────────────────────────────────────────────────
 
@@ -77,8 +114,15 @@ export class HttpClient {
    * any custom fetch implementation supplied via `MeshAPIConfig.fetch`.
    */
   async rawFetch(url: string, init: RequestInit, opts?: RequestOptions): Promise<Response> {
+    const finalInit: RequestInit = { ...init };
+    if (opts?.requestId !== undefined) {
+      const headers = new Headers(init.headers);
+      headers.set(REQUEST_ID_HEADER, validateRequestId(opts.requestId));
+      finalInit.headers = headers;
+    }
     const signal = this.buildSignal(opts);
-    return this.fetchImpl(url, { ...init, signal: signal as AbortSignal });
+    finalInit.signal = signal as AbortSignal;
+    return this.fetchImpl(url, finalInit);
   }
 
   async get<T>(path: string, opts?: RequestOptions): Promise<T> {
@@ -133,6 +177,9 @@ export class HttpClient {
       [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
       // Do NOT set Content-Type — fetch sets it automatically with the multipart boundary
     };
+    if (opts?.requestId !== undefined) {
+      headers[REQUEST_ID_HEADER] = validateRequestId(opts.requestId);
+    }
 
     let attempt = 0;
     while (true) {
@@ -163,7 +210,7 @@ export class HttpClient {
         return (await response.text()) as unknown as T;
       }
 
-      return response.json() as Promise<T>;
+      return attachResponseRequestId((await response.json()) as T, response);
     }
   }
 
@@ -185,7 +232,7 @@ export class HttpClient {
 
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method: "POST",
-      headers: this.buildHeaders(),
+      headers: this.buildHeaders(opts),
       body: JSON.stringify(body),
       signal,
     });
@@ -199,13 +246,17 @@ export class HttpClient {
 
   // ── Private ─────────────────────────────────────────────────────────────────
 
-  private buildHeaders(): Record<string, string> {
-    return {
+  private buildHeaders(opts?: RequestOptions): Record<string, string> {
+    const headers: Record<string, string> = {
       "Authorization": `Bearer ${this.token}`,
       "Content-Type": "application/json",
       "Accept": "application/json",
       [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
     };
+    if (opts?.requestId !== undefined) {
+      headers[REQUEST_ID_HEADER] = validateRequestId(opts.requestId);
+    }
+    return headers;
   }
 
   private buildSignal(opts?: RequestOptions): AbortSignal {
@@ -229,7 +280,7 @@ export class HttpClient {
 
     const init: RequestInit = {
       method,
-      headers: this.buildHeaders(),
+      headers: this.buildHeaders(opts),
       signal: signal as AbortSignal,
     };
 
@@ -261,7 +312,7 @@ export class HttpClient {
         return (await response.text()) as unknown as T;
       }
 
-      return response.json() as Promise<T>;
+      return attachResponseRequestId((await response.json()) as T, response);
     }
   }
 
@@ -275,7 +326,7 @@ export class HttpClient {
 
     const init: RequestInit = {
       method,
-      headers: this.buildHeaders(),
+      headers: this.buildHeaders(opts),
       signal: signal as AbortSignal,
     };
 

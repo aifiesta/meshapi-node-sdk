@@ -168,6 +168,7 @@ node --test test-rag.js
 | `test-video.js` | Video list, generate → retrieve |
 | `test-compare.js` | Non-streaming compare, streaming compare |
 | `test-moderations.js` | Moderation classify: text and multimodal input |
+| `test-request-id.js` | Custom X-Request-Id echo, server-minted req_ ids, error requestId |
 
 ---
 

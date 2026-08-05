@@ -160,6 +160,7 @@ export type {
 export type {
   // Shared
   RequestOptions,
+  ResponseRequestIdMeta,
 
   // Chat
   ChatRole,
