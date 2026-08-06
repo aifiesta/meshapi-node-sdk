@@ -61,7 +61,8 @@ export class MeshAPI {
    *
    * Uses `input` (string or message list) instead of `messages`, supports
    * `reasoning.effort` for chain-of-thought, and `max_output_tokens` instead
-   * of `max_tokens`. Streaming uses the same SSE chunk format as chat/completions.
+   * of `max_tokens`. The reply carries `output`, not `choices`, and streaming
+   * yields `response.*` lifecycle events rather than chat chunks.
    *
    * @example
    * ```ts
@@ -70,7 +71,12 @@ export class MeshAPI {
    *   input: "Explain the halting problem simply.",
    *   reasoning: { effort: "medium" },
    * });
-   * console.log(response.choices[0]?.message.content);
+   * const text = response.output
+   *   ?.filter((item) => item.type === "message")
+   *   .flatMap((item) => item.content ?? [])
+   *   .map((part) => part.text ?? "")
+   *   .join("");
+   * console.log(text);
    * ```
    */
   readonly responses: ResponsesResource;
@@ -205,6 +211,8 @@ export type {
   ResponsesParams,
   ResponsesUsage,
   ResponsesResponse,
+  ResponsesOutputItem,
+  ResponsesOutputContentPart,
   ResponsesStreamEvent,
   ModelOverride,
   CompareParams,
@@ -212,9 +220,15 @@ export type {
   ModelCompareResult,
   CompareResponse,
   CompareStreamEvent,
+  CompareStreamStartEvent,
+  CompareStreamDeltaEvent,
+  CompareStreamModelEvent,
+  CompareStreamResultsEvent,
+  CompareStreamEndEvent,
   BatchRequestItem,
   CreateBatchParams,
   BatchObject,
+  BatchResultItem,
   BatchListResponse,
 
   // Images

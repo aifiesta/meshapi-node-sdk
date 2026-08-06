@@ -1,6 +1,6 @@
 # meshapi-node-sdk
 
-Official TypeScript SDK for [Mesh API](https://meshapi.ai), an AI model gateway that gives you instant access to 300+ LLMs through a single OpenAI-compatible API.
+Official TypeScript SDK for [Mesh API](https://meshapi.ai), an AI model gateway that gives you instant access to 900+ LLMs through a single OpenAI-compatible API.
 
 Code once with the chat completions signature you already know. Switch between OpenAI, Anthropic, Google, Meta, Mistral, DeepSeek, xAI, Alibaba and the rest by changing a model string. Streaming, tool calling, vision, embeddings, multi-model compare, batch jobs, RAG and prompt templates from a single client.
 
@@ -20,7 +20,7 @@ const reply = await client.chat.completions.create({
 console.log(reply.choices[0]?.message.content);
 ```
 
-Node 18+. Zero runtime dependencies. Native `fetch`, `AsyncIterable` streaming, full strict-mode types.
+Node 18+. No required runtime dependencies — native `fetch`, `AsyncIterable` streaming, full strict-mode types. Realtime on Node 18–21 needs the optional `ws` peer (Node 22+ and browsers use the built-in `WebSocket`).
 
 ## Install
 
@@ -36,7 +36,7 @@ Get a key at [meshapi.ai](https://meshapi.ai). Data-plane keys are prefixed `rsk
 
 | | |
 | --- | --- |
-| **One Universal API** | Code once. A single `chat.completions.create` call works across 300+ base models. |
+| **One Universal API** | Code once. A single `chat.completions.create` call works across every model in the catalogue. |
 | **Streaming + tool calling** | SSE streaming via `AsyncIterable`, function calling, vision and audio content parts. |
 | **Reasoning models** | First-class `responses` API with `reasoning.effort` and `max_output_tokens`. |
 | **Embeddings** | Drop-in OpenAI-compatible embeddings endpoint. |
@@ -191,7 +191,7 @@ const country = await client.chat.completions.parse<Country>(
 );
 ```
 
-> The SDK ships with no runtime dependencies. JSON-schema derivation is loaded
+> The SDK has no required runtime dependencies. JSON-schema derivation is loaded
 > on demand per vendor: a Zod schema dynamic-imports `zod` (v4, optional peer);
 > a Valibot schema dynamic-imports `@valibot/to-json-schema` (optional peer —
 > install it alongside valibot); other Standard Schema validators are supported
@@ -241,7 +241,27 @@ const reply = await client.responses.create({
   reasoning: { effort: "medium" },
   max_output_tokens: 512,
 });
-console.log(reply.choices[0]?.message.content);
+
+// The Responses API returns `output`, not `choices` — the text lives on the
+// message item's content parts.
+const text = reply.output
+  ?.filter((item) => item.type === "message")
+  .flatMap((item) => item.content ?? [])
+  .map((part) => part.text ?? "")
+  .join("");
+console.log(text);
+
+// Streaming yields `response.*` lifecycle events; text arrives on
+// `response.output_text.delta`.
+for await (const event of client.responses.create({
+  model: "openai/o4-mini",
+  input: "Explain the halting problem in two sentences.",
+  stream: true,
+})) {
+  if (event.type === "response.output_text.delta") {
+    process.stdout.write(String(event.delta ?? ""));
+  }
+}
 
 // List background response jobs, or fetch one by id
 const jobs = await client.responses.list({ limit: 20 });
@@ -358,12 +378,23 @@ const edited = await client.images.edit({
 ## Compare (multi-model fanout)
 
 ```ts
+// Frames have no `event`/`data` wrapper — narrow on the fields present.
 for await (const event of client.compare.create({
   models: ["openai/gpt-4o-mini", "anthropic/claude-sonnet-4.5"],
   messages: [{ role: "user", content: "Summarise in one sentence: ..." }],
   stream: true,
 })) {
-  if (event.event === "delta") console.log(event.data);
+  if ("model" in event) {
+    // One participating model finished; `delta` holds its full answer.
+    console.log(`${event.model} (${event.latency_ms}ms): ${event.delta}`);
+  } else if ("results" in event) {
+    console.log(`all ${event.results.length} results in`);
+  } else if ("total_latency_ms" in event) {
+    console.log(`done in ${event.total_latency_ms}ms`);
+  } else if ("delta" in event) {
+    // Token delta from the comparison model's own summary.
+    process.stdout.write(event.delta);
+  }
 }
 ```
 
@@ -383,6 +414,13 @@ const batch = await client.batches.create({
 // Poll
 const status = await client.batches.get(batch.id);
 console.log(status.status);
+
+// Read the output — results arrive inline on the batch object once complete.
+if (status.status === "completed") {
+  for (const r of status.results ?? []) {
+    console.log(r.custom_id, JSON.stringify(r.response?.body ?? r));
+  }
+}
 
 // List past batches (paginated via `after` + `limit`)
 const batches = await client.batches.list({ limit: 20 });
@@ -416,8 +454,16 @@ const upload2 = await client.rag.uploadFile({
   content: pdfBytes, // Uint8Array or string
 });
 
-// 3. Trigger embedding
-await client.rag.embed({ file_ids: [upload.file_id] });
+// 3. Wait for the upload to finish, then trigger embedding.
+//    embed() rejects a file that is still uploading — and reports that inside
+//    `results[]` rather than throwing, so it is easy to miss.
+while ((await client.rag.get(upload.file_id)).upload_status !== "ready") {
+  await new Promise(r => setTimeout(r, 1_000));
+}
+const embedded = await client.rag.embed({ file_ids: [upload.file_id] });
+for (const r of embedded.results) {
+  if (r.embedding_status === "error") throw new Error(r.error ?? "embedding failed");
+}
 
 // 4. Poll until ready
 while (true) {
@@ -615,7 +661,7 @@ import type {
 
 ## About Mesh API
 
-[Mesh API](https://meshapi.ai) is an AI model gateway that gives you instant access to 300+ LLMs through a single, unified API.
+[Mesh API](https://meshapi.ai) is an AI model gateway that gives you instant access to 900+ LLMs through a single, unified API.
 
 Documentation: [developers.meshapi.ai](https://developers.meshapi.ai)
 

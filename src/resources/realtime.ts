@@ -79,10 +79,22 @@ async function openWebSocket(url: string, subprotocols: string[], headers: Recor
       (ws as unknown as EventTarget).addEventListener("open", () => resolve(ws), { once: true });
       (ws as unknown as EventTarget).addEventListener("error", (ev: unknown) => reject(ev), { once: true });
     });
-  } catch {
+  } catch (err) {
+    // Only a genuine resolution failure means `ws` is missing. Anything else —
+    // a bundler shim, a broken install, an ESM/CJS interop fault — is a real
+    // error and must not be disguised as "install ws", which sends people to
+    // reinstall a package they already have.
+    const code = (err as { code?: string } | undefined)?.code;
+    const notInstalled = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+
     throw new Error(
-      "No WebSocket implementation found. On Node 18–21, install the `ws` package: npm install ws\n" +
-      "Node 22+ and browsers have WebSocket built in."
+      notInstalled
+        ? "No WebSocket implementation found. On Node 18–21, install the `ws` package: npm install ws\n" +
+          "Node 22+ and browsers have WebSocket built in."
+        : `Failed to load the \`ws\` WebSocket transport: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+      { cause: err },
     );
   }
 }

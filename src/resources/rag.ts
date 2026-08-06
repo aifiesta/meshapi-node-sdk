@@ -40,7 +40,21 @@ export class RagResource {
 
   /**
    * Enqueue embedding jobs for one or more files.
-   * Each file must have upload_status=ready and embedding_status=pending or failed.
+   *
+   * Each file must already have `upload_status="ready"`. A file that is still
+   * uploading is **rejected per-file, not by throwing** — this method resolves
+   * normally and the failure appears inside the returned array:
+   *
+   * ```ts
+   * const res = await client.rag.embed({ file_ids: [id] });
+   * for (const r of res.results) {
+   *   if (r.embedding_status === "error") throw new Error(r.error ?? "embed failed");
+   * }
+   * ```
+   *
+   * Calling this immediately after `uploadFile()` commonly yields
+   * `"upload_status must be 'ready' (current: 'pending')."` — poll
+   * {@link RagResource.get} until `upload_status === "ready"` first.
    */
   embed(params: BulkEmbedRequest, opts?: RequestOptions): Promise<BulkEmbedResponse> {
     return this.http.post<BulkEmbedResponse>("/v1/files/embed", params, opts);

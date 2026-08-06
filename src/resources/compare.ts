@@ -18,6 +18,17 @@ export class CompareResource {
     params: CompareParams & { stream: true },
     opts?: RequestOptions,
   ): AsyncIterable<CompareStreamEvent>;
+  /**
+   * Fallback overload for a `CompareParams` whose `stream` is a plain
+   * `boolean` — i.e. built at runtime rather than as a literal. Without it the
+   * exported `CompareParams` type matches neither of the overloads above and
+   * cannot be passed to this method at all. `chat` and `responses` already
+   * carry the equivalent overload.
+   */
+  create(
+    params: CompareParams,
+    opts?: RequestOptions,
+  ): Promise<CompareResponse> | AsyncIterable<CompareStreamEvent>;
   create(
     params: CompareParams,
     opts?: RequestOptions,
