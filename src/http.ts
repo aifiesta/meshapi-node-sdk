@@ -43,13 +43,178 @@ export interface MeshAPIConfig {
    * @default 3
    */
   maxRetries?: number;
+
+  /**
+   * Called once per HTTP response, for every request the client makes —
+   * streaming and non-streaming, successful and failed.
+   *
+   * The gateway returns a request id in the `x-request-id` response header.
+   * On failures that id is already available via `MeshAPIApiError.requestId`,
+   * but on **successful** responses it was previously discarded. This hook
+   * surfaces it, so a slow-but-successful request can be correlated with
+   * server-side logs.
+   *
+   * Failures in the hook never affect the request: a synchronous throw is
+   * swallowed, and so is a rejection from an `async` hook.
+   *
+   * An `async` hook is accepted and **not awaited** — the response is returned as
+   * soon as the hook is invoked, so logging cannot add latency. Anything that
+   * must happen before the caller sees the response has to be synchronous.
+   *
+   * Typed as returning `void` rather than `void | Promise<void>` deliberately:
+   * TypeScript's void-return rule already permits an `async` hook, while a union
+   * would reject ordinary concise bodies such as `(info) => buffer.push(info)`.
+   *
+   * @example
+   * ```ts
+   * const client = new MeshAPI({
+   *   baseUrl: "https://api.meshapi.ai",
+   *   token: process.env.MESHAPI_API_KEY!,
+   *   onResponse: ({ requestId, status, durationMs }) => {
+   *     logger.info({ requestId, status, durationMs }, "meshapi request");
+   *   },
+   * });
+   * ```
+   */
+  onResponse?: (info: ResponseInfo) => void;
+}
+
+/** Metadata passed to {@link MeshAPIConfig.onResponse} for each HTTP response. */
+export interface ResponseInfo {
+  /**
+   * Value of the `x-request-id` response header — quote this when contacting
+   * support. `undefined` when the response carries no such header, which is the
+   * case for the third-party signed-URL PUT performed by `rag.uploadFile()`.
+   */
+  requestId: string | undefined;
+
+  /** HTTP status code of the response. */
+  status: number;
+
+  /** HTTP method of the request. */
+  method: string;
+
+  /**
+   * Request URL.
+   *
+   * For gateway requests this is the full URL including its query string, which
+   * carries only non-sensitive parameters such as `?limit=20` — gateway auth
+   * travels in the `Authorization` header, never the URL.
+   *
+   * For requests to any other host the query string is **removed**. The only
+   * such request the SDK makes is the signed-storage PUT inside
+   * `rag.uploadFile()`, whose query is a short-lived upload credential; passing
+   * it to a logging callback would persist a reusable write capability.
+   */
+  url: string;
+
+  /**
+   * Milliseconds from issuing the request until response headers arrived.
+   *
+   * For streaming requests this is time-to-first-byte, not the duration of the
+   * whole stream — the body is still being consumed when this hook fires.
+   */
+  durationMs: number;
 }
 
 const RETRY_STATUS_CODES = new Set([429, 502, 503, 504]);
 const BACKOFF_BASE_MS = 500;
 const BACKOFF_MAX_MS = 30_000;
-const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
-const SDK_VERSION_VALUE = "node/0.1.0";
+/**
+ * Single source of truth for the SDK identification header, shared by the HTTP
+ * client and the realtime WebSocket resource.
+ *
+ * `SDK_VERSION_VALUE` must match the `version` field in package.json. It was
+ * previously duplicated in `resources/realtime.ts`, which is how it drifted;
+ * `tests/on-response.test.ts` now asserts it so a release cannot ship a stale
+ * value.
+ */
+export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
+export const SDK_VERSION_VALUE = "node/0.1.1";
+
+/**
+ * Build the URL reported to `onResponse`, with third-party credentials removed.
+ *
+ * `rag.uploadFile()` PUTs file bytes to a signed storage URL whose query string
+ * *is* the credential — for GCS that is `X-Goog-Credential` plus
+ * `X-Goog-Signature`, several hundred characters granting write access until it
+ * expires. Handing that to a logging callback would persist a live upload
+ * capability in the caller's logs, so the query is dropped for every host other
+ * than the gateway.
+ *
+ * Fails safe: if `baseUrl` or the request URL cannot be parsed, the query is
+ * dropped rather than assumed harmless.
+ */
+function redactUrl(raw: string, gatewayHost: string): string {
+  const stripQuery = () => {
+    const q = raw.indexOf("?");
+    return q === -1 ? raw : raw.slice(0, q);
+  };
+  if (!gatewayHost) return stripQuery();
+  try {
+    const url = new URL(raw);
+    if (url.host === gatewayHost) return raw;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return stripQuery();
+  }
+}
+
+/**
+ * Wrap a fetch implementation so `onResponse` fires for every response.
+ *
+ * Wrapping at this single point means all request paths are covered —
+ * `request`, `requestRaw`, `stream`, `postMultipart` and `rawFetch` all go
+ * through `fetchImpl`. Returns the original function untouched when no hook is
+ * configured, so there is no overhead for callers that do not use it.
+ *
+ * A user-supplied `config.fetch` is wrapped rather than replaced, so test
+ * mocks keep working.
+ */
+function wrapFetch(
+  baseFetch: typeof fetch,
+  onResponse: MeshAPIConfig["onResponse"],
+  baseUrl: string,
+): typeof fetch {
+  if (!onResponse) return baseFetch;
+
+  let gatewayHost = "";
+  try {
+    gatewayHost = new URL(baseUrl).host;
+  } catch {
+    // Leave empty — redactUrl then strips the query from every URL.
+  }
+
+  return async function fetchWithResponseHook(input, init) {
+    const startedAt = Date.now();
+    const response = await baseFetch(input, init);
+    try {
+      // Typed `unknown` because the declared return type is `void` while an
+      // `async` hook actually returns a promise at runtime.
+      const result: unknown = onResponse({
+        requestId: response.headers.get("x-request-id") ?? undefined,
+        status: response.status,
+        method: init?.method ?? "GET",
+        url: redactUrl(typeof input === "string" ? input : String(input), gatewayHost),
+        durationMs: Date.now() - startedAt,
+      });
+
+      // An async hook returns a promise. It is deliberately not awaited — the
+      // response must not wait on logging — but an unobserved rejection would
+      // become an unhandled rejection and can terminate the process, so attach
+      // a catch. Guarded by a thenable check so the common synchronous hook
+      // allocates nothing.
+      if (typeof (result as PromiseLike<void> | undefined)?.then === "function") {
+        void (result as Promise<void>).then(undefined, () => {});
+      }
+    } catch {
+      // A synchronous throw from the hook must not break the request either.
+    }
+    return response;
+  };
+}
 
 // ── HTTP client ───────────────────────────────────────────────────────────────
 
@@ -66,7 +231,11 @@ export class HttpClient {
     this.token = config.token;
     this.defaultTimeoutMs = config.timeoutMs ?? 60_000;
     this.defaultSignal = config.signal;
-    this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
+    this.fetchImpl = wrapFetch(
+      config.fetch ?? globalThis.fetch.bind(globalThis),
+      config.onResponse,
+      this.baseUrl,
+    );
     this.maxRetries = config.maxRetries ?? 3;
   }
 

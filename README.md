@@ -59,8 +59,40 @@ const client = new MeshAPI({
   timeoutMs: 60_000,                 // default 60 s
   signal: controller.signal,         // optional global AbortSignal
   fetch: customFetch,                // optional fetch override
+  maxRetries: 3,                     // default 3; 429/502/503/504 only
+  onResponse: (info) => {},          // optional per-response observability hook
 });
 ```
+
+### Request IDs and observability
+
+Every response carries an `x-request-id` header. On failures it is already on the
+error (`MeshAPIApiError.requestId`), but the `onResponse` hook surfaces it for
+**successful** responses too — so a slow-but-successful request can still be
+correlated with server-side logs.
+
+```ts
+const client = new MeshAPI({
+  baseUrl: "https://api.meshapi.ai",
+  token: process.env.MESHAPI_API_KEY!,
+  onResponse: ({ requestId, status, method, url, durationMs }) => {
+    logger.info({ requestId, status, method, url, durationMs }, "meshapi request");
+  },
+});
+```
+
+The hook fires once per HTTP response, for every request the client makes:
+
+- Streaming **and** non-streaming requests. For streams it fires as soon as
+  response headers arrive, so `durationMs` is time-to-first-byte rather than the
+  duration of the whole stream.
+- Successful **and** failed responses, including each individual attempt when a
+  request is retried.
+- `requestId` is `undefined` when a response carries no `x-request-id` — notably
+  the third-party signed-URL upload performed by `rag.uploadFile()`.
+
+Exceptions thrown inside the hook are swallowed, so a logging failure can never
+break the request it is observing.
 
 ## Chat completions
 
@@ -124,7 +156,7 @@ try {
 
 `chat.completions.parse()` constrains the model to a JSON schema and returns a
 parsed, typed result. Pass a [Standard Schema](https://standardschema.dev)
-validator (Zod v3.24+, Valibot, ArkType) for runtime validation + typing, or a
+validator (Zod v4, Valibot, ArkType) for runtime validation + typing, or a
 raw JSON schema object.
 
 ```ts
@@ -239,22 +271,26 @@ const audio = await client.audio.synthesize({
 });
 writeFileSync("output.wav", Buffer.from(audio));
 
-// Speech-to-text — submit a transcription job
+// Speech-to-text — the audio bytes are the first argument, params the second.
 const audioFile = readFileSync("audio.wav");
-const result = await client.audio.transcribe({
-  model: "sarvam/saaras:v3",
-  file: audioFile,
-  file_name: "audio.wav",
-  language: "en",
-});
+const result = await client.audio.transcribe(
+  audioFile,
+  // `language_code` is optional and its accepted values are model-specific —
+  // sarvam/saaras:v3 expects locales such as "en-IN", not bare "en".
+  { model: "sarvam/saaras:v3", language_code: "en-IN" },
+  { filename: "audio.wav" }, // optional; defaults to "audio.mp3"
+);
 console.log(result.text);
 
+// Fetch a previously submitted transcription by id
+const existing = await client.audio.getTranscription("transcription-id");
+
 // Translate audio to English (via /v1/audio/transcriptions/translate)
-const translated = await client.audio.translate({
-  model: "sarvam/saaras:v3",
-  file: audioFile,
-  file_name: "audio.wav",
-});
+const translated = await client.audio.translate(
+  audioFile,
+  { model: "sarvam/saaras:v3" },
+  { filename: "audio.wav" },
+);
 console.log(translated.text);
 
 // Standalone OpenAI-compatible translate (POST /v1/audio/translations)
@@ -347,6 +383,9 @@ const batch = await client.batches.create({
 // Poll
 const status = await client.batches.get(batch.id);
 console.log(status.status);
+
+// List past batches (paginated via `after` + `limit`)
+const batches = await client.batches.list({ limit: 20 });
 
 // Cancel
 await client.batches.cancel(batch.id);
@@ -502,6 +541,7 @@ const reply = await client.chat.completions.create({
 
 // CRUD
 const list = await client.templates.list();
+const template = await client.templates.get("uuid");
 await client.templates.update("uuid", { model: "openai/gpt-4o" });
 await client.templates.delete("uuid");
 ```
@@ -542,7 +582,7 @@ Retries on 429/502/503/504 with exponential backoff (default 3 retries, 500 ms b
 
 ```ts
 import type {
-  MeshAPIConfig,
+  MeshAPIConfig, ResponseInfo,
   // chat
   ChatCompletionParams, ChatCompletionResponse, ChatCompletionChunk,
   ChatMessage, Tool, ToolCall,
