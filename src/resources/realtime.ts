@@ -2,8 +2,8 @@
  * Realtime resource — WSS /v1/realtime (bidirectional WebSocket session).
  *
  * Uses the global WebSocket (Node 22+ / browsers) with a fallback to the `ws`
- * package for Node 18–21. Auth is delivered via the Sec-WebSocket-Protocol
- * header per the MeshAPI wire contract.
+ * package for Node 18–21. Auth is delivered via the `?api_key=` query string —
+ * the only mechanism the gateway accepts. See {@link RealtimeResource.connect}.
  */
 
 import { SDK_VERSION_HEADER, SDK_VERSION_VALUE } from "../http.js";
@@ -296,8 +296,16 @@ export class RealtimeResource {
   /**
    * Open a WebSocket session to the realtime endpoint for *model*.
    *
-   * Auth is sent via `Sec-WebSocket-Protocol: openai-realtime, Bearer <token>`,
-   * matching the MeshAPI wire contract exactly.
+   * **Auth travels in the URL query string** (`?api_key=<token>`), because that
+   * is the only mechanism the gateway currently accepts. Verified against
+   * production: a raw `Sec-WebSocket-Protocol: openai-realtime, Bearer <token>`
+   * header is rejected with HTTP 400, and an `Authorization: Bearer` header or a
+   * space-free subprotocol variant both fail with `invalid_api_key`.
+   *
+   * Note that query strings are commonly recorded in proxy, load-balancer and
+   * CDN access logs, so the key can end up in logs that are not treated as
+   * secret storage. Moving auth to a header or subprotocol requires a
+   * gateway-side change; it cannot be fixed in this SDK alone.
    *
    * ```ts
    * const session = await client.realtime.connect({ model: "openai/gpt-4o-realtime-preview" });
@@ -309,7 +317,8 @@ export class RealtimeResource {
   async connect(params: RealtimeConnectParams): Promise<RealtimeSession> {
     const wsUrl = buildWSUrl(this._config.baseUrl, params.model, this._config.token);
 
-    // Primary auth: Sec-WebSocket-Protocol header.
+    // The subprotocol carries only the protocol name — the gateway reads the key
+    // from the query string (see connect() docs for the verification matrix).
     // Subprotocol list sent as-is; the server echoes "openai-realtime".
     const subprotocols = ["openai-realtime"];
 

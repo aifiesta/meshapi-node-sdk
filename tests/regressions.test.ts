@@ -175,3 +175,48 @@ describe("compare.create accepts a plain CompareParams", () => {
     assert.equal(result.comparison_id, "cmp_1");
   });
 });
+
+// ── Non-envelope JSON error bodies ────────────────────────────────────────────
+
+describe("JSON error bodies that are not the Mesh envelope keep their message", () => {
+  it("surfaces FastAPI's string detail instead of a bare HTTP status", async () => {
+    const err = await MeshAPIApiError.fromResponse(
+      makeResponse(
+        422,
+        JSON.stringify({ detail: "Model 'stabilityai/sdxl-turbo' does not support operation 'edit'." }),
+        "application/json",
+      ),
+    );
+    // Previously the body was consumed by .json(), the envelope check failed,
+    // response.text() then threw, and the message collapsed to "HTTP 422".
+    assert.match(err.message, /does not support operation 'edit'/);
+    assert.equal(err.errorCode, "validation_error");
+    assert.equal(err.status, 422);
+  });
+
+  it("flattens FastAPI's validation detail array and keeps it on .details", async () => {
+    const err = await MeshAPIApiError.fromResponse(
+      makeResponse(
+        422,
+        JSON.stringify({ detail: [{ loc: ["body", "model"], msg: "field required", type: "missing" }] }),
+        "application/json",
+      ),
+    );
+    assert.match(err.message, /body\.model: field required/);
+    assert.equal(err.details.length, 1);
+  });
+
+  it("falls back to a plain `message` field", async () => {
+    const err = await MeshAPIApiError.fromResponse(
+      makeResponse(400, JSON.stringify({ message: "something specific went wrong" }), "application/json"),
+    );
+    assert.match(err.message, /something specific went wrong/);
+  });
+
+  it("keeps the request id from the header", async () => {
+    const err = await MeshAPIApiError.fromResponse(
+      makeResponse(422, JSON.stringify({ detail: "nope" }), "application/json", { "x-request-id": "req_detail" }),
+    );
+    assert.equal(err.requestId, "req_detail");
+  });
+});
