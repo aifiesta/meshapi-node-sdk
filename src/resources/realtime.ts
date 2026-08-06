@@ -60,9 +60,11 @@ async function openWebSocket(url: string, subprotocols: string[], headers: Recor
   // Prefer global WebSocket (Node 22+, browsers).
   if (typeof globalThis.WebSocket !== "undefined") {
     return new Promise<AnyWebSocket>((resolve, reject) => {
-      // The global WebSocket API does not support custom headers on the initial
-      // handshake in browsers. We encode auth in the subprotocol list instead,
-      // which is fully supported and is the primary auth method in the spec.
+      // The global WebSocket API cannot set custom headers on the handshake, so
+      // `headers` is unused on this path. That costs nothing today: the gateway
+      // reads the key from the `?api_key=` query string already present in
+      // `url`, and `subprotocols` carries only the protocol name. See connect()
+      // for the verification matrix behind that.
       const ws = new globalThis.WebSocket(url, subprotocols) as unknown as AnyWebSocket;
       const tempOpen = () => { resolve(ws); };
       const tempError = (ev: unknown) => { reject(ev); };
