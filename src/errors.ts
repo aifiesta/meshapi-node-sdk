@@ -1,6 +1,52 @@
 import type { ApiErrorBody, ApiErrorEnvelope } from "./types.js";
 
 /**
+ * Read the `Retry-After` response header as whole seconds.
+ *
+ * RFC 9110 allows either delta-seconds or an HTTP-date; both are handled. A
+ * past date clamps to 0. Returns `undefined` when the header is absent or
+ * unparseable, so callers can `??=` it over a body-supplied value.
+ */
+function parseRetryAfterSeconds(response: Response): number | undefined {
+  const header = response.headers.get("retry-after");
+  if (!header) return undefined;
+
+  const seconds = Number(header.trim());
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
+
+  const at = Date.parse(header);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, Math.ceil((at - Date.now()) / 1000));
+}
+
+/**
+ * Error code for a response whose body was not parseable JSON.
+ *
+ * `"parse_error"` should mean "we could not tell what went wrong". For a 4xx
+ * the status itself is definitive, so reporting a parse failure hides the real
+ * cause — `videos.retrieve()` on an unknown id answers 404 with a non-JSON body
+ * and used to surface as `parse_error` rather than `not_found`.
+ *
+ * 5xx deliberately still maps to `"parse_error"`: an unparseable server error
+ * really is a response we could not interpret, and existing behaviour for
+ * gateway HTML error pages is pinned by tests.
+ */
+function codeForStatus(status: number): string {
+  switch (status) {
+    case 400: return "bad_request";
+    case 401: return "unauthorized";
+    case 402: return "spend_limit_exceeded";
+    case 403: return "forbidden";
+    case 404: return "not_found";
+    case 408: return "timeout";
+    case 409: return "conflict";
+    case 422: return "validation_error";
+    case 429: return "rate_limit_exceeded";
+    default: return "parse_error";
+  }
+}
+
+/**
  * Thrown for every non-2xx response from the MeshAPI API.
  *
  * @example
@@ -83,6 +129,15 @@ export class MeshAPIApiError extends Error {
       try {
         const body = (await response.json()) as Partial<ApiErrorEnvelope>;
         if (body.error && typeof body.error.code === "string") {
+          // RFC 9110 puts the retry delay in the `Retry-After` header; the body
+          // field is a Mesh convenience that not every response carries. Fall
+          // back to the header so `retryAfterSeconds` is populated whenever the
+          // server said anything at all — the retry scheduler already reads it,
+          // and callers following the documented rate-limit snippet expect it.
+          if (body.error.retry_after_seconds === undefined) {
+            const fromHeader = parseRetryAfterSeconds(response);
+            if (fromHeader !== undefined) body.error.retry_after_seconds = fromHeader;
+          }
           return new MeshAPIApiError(response.status, body as ApiErrorEnvelope);
         }
       } catch {
@@ -98,10 +153,12 @@ export class MeshAPIApiError extends Error {
       // ignore
     }
 
+    const retryAfter = parseRetryAfterSeconds(response);
     const syntheticEnvelope: ApiErrorEnvelope = {
       error: {
-        code: "parse_error",
+        code: codeForStatus(response.status),
         message: rawText.slice(0, 500) || `HTTP ${response.status}`,
+        ...(retryAfter !== undefined ? { retry_after_seconds: retryAfter } : {}),
       } satisfies ApiErrorBody,
       request_id: response.headers.get("x-request-id") ?? "",
     };

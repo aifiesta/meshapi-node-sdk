@@ -130,7 +130,7 @@ const BACKOFF_MAX_MS = 30_000;
  * value.
  */
 export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
-export const SDK_VERSION_VALUE = "node/0.1.1";
+export const SDK_VERSION_VALUE = "node/0.1.3";
 
 /**
  * Build the URL reported to `onResponse`, with third-party credentials removed.
@@ -505,8 +505,22 @@ export async function* parseSSEStream(
   yield* parseJSONSSEStream<ChatCompletionChunk>(response);
 }
 
+/** Controls how a raw SSE stream is turned into typed frames. */
+export interface SSEParseOptions {
+  /**
+   * Emit frames whose `type` starts with `"response."` instead of skipping them.
+   *
+   * The Responses API streams *only* such frames (`response.created`,
+   * `response.output_text.delta`, …), so its stream yields nothing unless this
+   * is set. Chat completions never emit them, so the default stays `false` and
+   * chat callers keep receiving well-typed `ChatCompletionChunk`s.
+   */
+  emitResponseEvents?: boolean;
+}
+
 export async function* parseJSONSSEStream<T>(
   response: Response,
+  sseOpts?: SSEParseOptions,
 ): AsyncIterable<T> {
   if (!response.body) {
     throw new Error("Response body is null; cannot parse SSE stream.");
@@ -523,7 +537,7 @@ export async function* parseJSONSSEStream<T>(
       if (done) {
         // Flush any remaining buffered data
         if (remainder.trim()) {
-          const chunk = tryParseJSONSSEFrame<T>(remainder);
+          const chunk = tryParseJSONSSEFrame<T>(remainder, sseOpts);
           if (chunk !== null) yield chunk;
         }
         break;
@@ -548,7 +562,7 @@ export async function* parseJSONSSEStream<T>(
           return;
         }
 
-        const chunk = tryParseJSONSSEFrame<T>(frame);
+        const chunk = tryParseJSONSSEFrame<T>(frame, sseOpts);
         if (chunk !== null) yield chunk;
       }
     }
@@ -566,7 +580,7 @@ function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
   return tryParseJSONSSEFrame<ChatCompletionChunk>(frame);
 }
 
-function tryParseJSONSSEFrame<T>(frame: string): T | null {
+function tryParseJSONSSEFrame<T>(frame: string, sseOpts?: SSEParseOptions): T | null {
   const dataLines: string[] = [];
 
   for (const line of frame.split("\n")) {
@@ -611,7 +625,11 @@ function tryParseJSONSSEFrame<T>(frame: string): T | null {
     // with "response." (e.g. "response.reasoning_text.delta"). These are not
     // chat-completion-chunk shaped; skip them so callers always receive a
     // well-typed ChatCompletionChunk rather than a miscast object.
-    if (typeof parsed["type"] === "string" && parsed["type"].startsWith("response.")) {
+    if (
+      !sseOpts?.emitResponseEvents &&
+      typeof parsed["type"] === "string" &&
+      parsed["type"].startsWith("response.")
+    ) {
       continue;
     }
 
@@ -639,6 +657,7 @@ export function makeLazySSEIterable<T = ChatCompletionChunk>(
   path: string,
   params: unknown,
   opts?: RequestOptions,
+  sseOpts?: SSEParseOptions,
 ): AsyncIterable<T> {
   return {
     [Symbol.asyncIterator](): AsyncIterator<T> {
@@ -646,7 +665,7 @@ export function makeLazySSEIterable<T = ChatCompletionChunk>(
 
       const init = async (): Promise<AsyncIterator<T>> => {
         const response = await http.stream(path, params, opts);
-        const gen = parseJSONSSEStream<T>(response);
+        const gen = parseJSONSSEStream<T>(response, sseOpts);
         return gen[Symbol.asyncIterator]();
       };
 
