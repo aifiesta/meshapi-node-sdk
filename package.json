@@ -1,6 +1,6 @@
 {
   "name": "meshapi-node-sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Official TypeScript SDK for Mesh API. One OpenAI-compatible key, 321 LLMs, unified billing, prompt templates, batches.",
   "type": "module",
   "main": "./dist/index.cjs",
