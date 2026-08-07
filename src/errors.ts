@@ -1,6 +1,94 @@
 import type { ApiErrorBody, ApiErrorEnvelope } from "./types.js";
 
 /**
+ * Read the `Retry-After` response header as whole seconds.
+ *
+ * RFC 9110 allows either delta-seconds or an HTTP-date; both are handled. A
+ * past date clamps to 0. Returns `undefined` when the header is absent or
+ * unparseable, so callers can `??=` it over a body-supplied value.
+ */
+function parseRetryAfterSeconds(response: Response): number | undefined {
+  const header = response.headers.get("retry-after");
+  if (!header) return undefined;
+
+  const seconds = Number(header.trim());
+  if (Number.isFinite(seconds)) return Math.max(0, Math.ceil(seconds));
+
+  const at = Date.parse(header);
+  if (Number.isNaN(at)) return undefined;
+  return Math.max(0, Math.ceil((at - Date.now()) / 1000));
+}
+
+/**
+ * Error code for a response whose body was not parseable JSON.
+ *
+ * `"parse_error"` should mean "we could not tell what went wrong". For a 4xx
+ * the status itself is definitive, so reporting a parse failure hides the real
+ * cause — `videos.retrieve()` on an unknown id answers 404 with a non-JSON body
+ * and used to surface as `parse_error` rather than `not_found`.
+ *
+ * 5xx deliberately still maps to `"parse_error"`: an unparseable server error
+ * really is a response we could not interpret, and existing behaviour for
+ * gateway HTML error pages is pinned by tests.
+ */
+function codeForStatus(status: number): string {
+  switch (status) {
+    case 400: return "bad_request";
+    case 401: return "unauthorized";
+    case 402: return "spend_limit_exceeded";
+    case 403: return "forbidden";
+    case 404: return "not_found";
+    case 408: return "timeout";
+    case 409: return "conflict";
+    case 422: return "validation_error";
+    case 429: return "rate_limit_exceeded";
+    default: return "parse_error";
+  }
+}
+
+/**
+ * Human-readable message for a JSON error body that is not the Mesh envelope.
+ *
+ * Several endpoints answer with FastAPI's shape — `{"detail": "..."}` for a
+ * plain rejection, or `{"detail": [{loc, msg, type}]}` for a validation failure.
+ * Without this the message was dropped and callers saw only "HTTP 422".
+ */
+function messageFromNonEnvelope(body: unknown, status: number): string {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+
+  if (typeof detail === "string" && detail.trim()) return detail;
+
+  if (Array.isArray(detail) && detail.length > 0) {
+    const parts = detail
+      .map((d) => {
+        const rec = d as { loc?: unknown[]; msg?: unknown };
+        const where = Array.isArray(rec?.loc) ? rec.loc.join(".") : "";
+        const msg = typeof rec?.msg === "string" ? rec.msg : JSON.stringify(d);
+        return where ? `${where}: ${msg}` : msg;
+      })
+      .filter(Boolean);
+    if (parts.length) return parts.join("; ").slice(0, 500);
+  }
+
+  if (typeof (body as { message?: unknown } | null)?.message === "string") {
+    return (body as { message: string }).message;
+  }
+
+  try {
+    const json = JSON.stringify(body);
+    if (json && json !== "{}" && json !== "null") return json.slice(0, 500);
+  } catch {
+    // fall through
+  }
+  return `HTTP ${status}`;
+}
+
+/** Alias kept short for use inside object spreads. */
+function retryAfterFrom(response: Response): number | undefined {
+  return parseRetryAfterSeconds(response);
+}
+
+/**
  * Thrown for every non-2xx response from the MeshAPI API.
  *
  * @example
@@ -83,10 +171,38 @@ export class MeshAPIApiError extends Error {
       try {
         const body = (await response.json()) as Partial<ApiErrorEnvelope>;
         if (body.error && typeof body.error.code === "string") {
+          // RFC 9110 puts the retry delay in the `Retry-After` header; the body
+          // field is a Mesh convenience that not every response carries. Fall
+          // back to the header so `retryAfterSeconds` is populated whenever the
+          // server said anything at all — the retry scheduler already reads it,
+          // and callers following the documented rate-limit snippet expect it.
+          if (body.error.retry_after_seconds === undefined) {
+            const fromHeader = parseRetryAfterSeconds(response);
+            if (fromHeader !== undefined) body.error.retry_after_seconds = fromHeader;
+          }
           return new MeshAPIApiError(response.status, body as ApiErrorEnvelope);
         }
+
+        // Valid JSON, but not the Mesh envelope — several endpoints answer with
+        // FastAPI's `{"detail": ...}` instead. The body is already consumed at
+        // this point, so falling through to `response.text()` below throws and
+        // the message is lost entirely, leaving a bare "HTTP 422". Build the
+        // error from what we already parsed.
+        return new MeshAPIApiError(response.status, {
+          error: {
+            code: codeForStatus(response.status),
+            message: messageFromNonEnvelope(body, response.status),
+            ...(Array.isArray((body as { detail?: unknown }).detail)
+              ? { details: (body as { detail: unknown[] }).detail }
+              : {}),
+            ...(retryAfterFrom(response) !== undefined
+              ? { retry_after_seconds: retryAfterFrom(response) as number }
+              : {}),
+          },
+          request_id: response.headers.get("x-request-id") ?? "",
+        });
       } catch {
-        // fall through to parse_error
+        // Not JSON after all — fall through to the raw-text fallback.
       }
     }
 
@@ -98,10 +214,12 @@ export class MeshAPIApiError extends Error {
       // ignore
     }
 
+    const retryAfter = parseRetryAfterSeconds(response);
     const syntheticEnvelope: ApiErrorEnvelope = {
       error: {
-        code: "parse_error",
+        code: codeForStatus(response.status),
         message: rawText.slice(0, 500) || `HTTP ${response.status}`,
+        ...(retryAfter !== undefined ? { retry_after_seconds: retryAfter } : {}),
       } satisfies ApiErrorBody,
       request_id: response.headers.get("x-request-id") ?? "",
     };

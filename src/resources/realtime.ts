@@ -2,8 +2,8 @@
  * Realtime resource — WSS /v1/realtime (bidirectional WebSocket session).
  *
  * Uses the global WebSocket (Node 22+ / browsers) with a fallback to the `ws`
- * package for Node 18–21. Auth is delivered via the Sec-WebSocket-Protocol
- * header per the MeshAPI wire contract.
+ * package for Node 18–21. Auth is delivered via the `?api_key=` query string —
+ * the only mechanism the gateway accepts. See {@link RealtimeResource.connect}.
  */
 
 import { SDK_VERSION_HEADER, SDK_VERSION_VALUE } from "../http.js";
@@ -60,9 +60,11 @@ async function openWebSocket(url: string, subprotocols: string[], headers: Recor
   // Prefer global WebSocket (Node 22+, browsers).
   if (typeof globalThis.WebSocket !== "undefined") {
     return new Promise<AnyWebSocket>((resolve, reject) => {
-      // The global WebSocket API does not support custom headers on the initial
-      // handshake in browsers. We encode auth in the subprotocol list instead,
-      // which is fully supported and is the primary auth method in the spec.
+      // The global WebSocket API cannot set custom headers on the handshake, so
+      // `headers` is unused on this path. That costs nothing today: the gateway
+      // reads the key from the `?api_key=` query string already present in
+      // `url`, and `subprotocols` carries only the protocol name. See connect()
+      // for the verification matrix behind that.
       const ws = new globalThis.WebSocket(url, subprotocols) as unknown as AnyWebSocket;
       const tempOpen = () => { resolve(ws); };
       const tempError = (ev: unknown) => { reject(ev); };
@@ -79,10 +81,22 @@ async function openWebSocket(url: string, subprotocols: string[], headers: Recor
       (ws as unknown as EventTarget).addEventListener("open", () => resolve(ws), { once: true });
       (ws as unknown as EventTarget).addEventListener("error", (ev: unknown) => reject(ev), { once: true });
     });
-  } catch {
+  } catch (err) {
+    // Only a genuine resolution failure means `ws` is missing. Anything else —
+    // a bundler shim, a broken install, an ESM/CJS interop fault — is a real
+    // error and must not be disguised as "install ws", which sends people to
+    // reinstall a package they already have.
+    const code = (err as { code?: string } | undefined)?.code;
+    const notInstalled = code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND";
+
     throw new Error(
-      "No WebSocket implementation found. On Node 18–21, install the `ws` package: npm install ws\n" +
-      "Node 22+ and browsers have WebSocket built in."
+      notInstalled
+        ? "No WebSocket implementation found. On Node 18–21, install the `ws` package: npm install ws\n" +
+          "Node 22+ and browsers have WebSocket built in."
+        : `Failed to load the \`ws\` WebSocket transport: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+      { cause: err },
     );
   }
 }
@@ -284,8 +298,16 @@ export class RealtimeResource {
   /**
    * Open a WebSocket session to the realtime endpoint for *model*.
    *
-   * Auth is sent via `Sec-WebSocket-Protocol: openai-realtime, Bearer <token>`,
-   * matching the MeshAPI wire contract exactly.
+   * **Auth travels in the URL query string** (`?api_key=<token>`), because that
+   * is the only mechanism the gateway currently accepts. Verified against
+   * production: a raw `Sec-WebSocket-Protocol: openai-realtime, Bearer <token>`
+   * header is rejected with HTTP 400, and an `Authorization: Bearer` header or a
+   * space-free subprotocol variant both fail with `invalid_api_key`.
+   *
+   * Note that query strings are commonly recorded in proxy, load-balancer and
+   * CDN access logs, so the key can end up in logs that are not treated as
+   * secret storage. Moving auth to a header or subprotocol requires a
+   * gateway-side change; it cannot be fixed in this SDK alone.
    *
    * ```ts
    * const session = await client.realtime.connect({ model: "openai/gpt-4o-realtime-preview" });
@@ -297,7 +319,8 @@ export class RealtimeResource {
   async connect(params: RealtimeConnectParams): Promise<RealtimeSession> {
     const wsUrl = buildWSUrl(this._config.baseUrl, params.model, this._config.token);
 
-    // Primary auth: Sec-WebSocket-Protocol header.
+    // The subprotocol carries only the protocol name — the gateway reads the key
+    // from the query string (see connect() docs for the verification matrix).
     // Subprotocol list sent as-is; the server echoes "openai-realtime".
     const subprotocols = ["openai-realtime"];
 

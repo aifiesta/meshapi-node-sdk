@@ -513,11 +513,40 @@ export interface ResponsesUsage {
   classifier_tokens?: number;
 }
 
+/** A content part inside a Responses API output item. */
+export interface ResponsesOutputContentPart {
+  /** e.g. `"output_text"`. */
+  type?: string;
+  text?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * One item in `ResponsesResponse.output`.
+ *
+ * Reasoning models emit several items per response — typically a `"reasoning"`
+ * item followed by a `"message"` item. The answer text lives on the `"message"`
+ * item's content parts.
+ */
+export interface ResponsesOutputItem {
+  /** e.g. `"message"`, `"reasoning"`, `"function_call"`. */
+  type?: string;
+  id?: string;
+  role?: string;
+  status?: string;
+  content?: ResponsesOutputContentPart[];
+  [key: string]: unknown;
+}
+
 export interface ResponsesResponse {
   id?: string;
   object?: string;
   model?: string;
-  output?: unknown[];
+  /**
+   * The response body — the Responses API has no `choices`. Read the answer
+   * from the `"message"` item's content parts.
+   */
+  output?: ResponsesOutputItem[];
   usage?: ResponsesUsage | null;
   status?: string | null;
   [key: string]: unknown;
@@ -585,11 +614,63 @@ export interface CompareResponse {
   skip_comparison: boolean;
 }
 
-export interface CompareStreamEvent {
-  event?: string;
-  data?: Record<string, unknown>;
-  [key: string]: unknown;
+/** First frame of a compare stream: which models are taking part. */
+export interface CompareStreamStartEvent {
+  comparison_id: string;
+  models: string[];
+  comparison_model?: string | null;
+  skip_comparison?: boolean;
 }
+
+/** A token delta from the comparison model's own summary. */
+export interface CompareStreamDeltaEvent {
+  delta: string;
+  finish_reason: string | null;
+}
+
+/** One participating model finished; `delta` holds its full answer. */
+export interface CompareStreamModelEvent {
+  model: string;
+  delta: string;
+  latency_ms: number;
+  error?: string | null;
+  error_code?: string | null;
+  usage?: TokenUsage | null;
+}
+
+/** The complete per-model result set, emitted near the end of the stream. */
+export interface CompareStreamResultsEvent {
+  results: ModelCompareResult[];
+}
+
+/** Final frame: totals for the comparison run. */
+export interface CompareStreamEndEvent {
+  comparison_id: string;
+  total_latency_ms: number;
+  partial: boolean;
+  comparison_model?: string | null;
+  comparison_fallback_used?: boolean;
+}
+
+/**
+ * A frame from `compare.create({ stream: true })`.
+ *
+ * There is no single discriminant field, so narrow with `in`:
+ *
+ * ```ts
+ * for await (const event of stream) {
+ *   if ("results" in event) console.log(event.results.length);
+ *   else if ("model" in event) console.log(event.model, event.delta);
+ *   else if ("total_latency_ms" in event) console.log("done", event.total_latency_ms);
+ * }
+ * ```
+ */
+export type CompareStreamEvent =
+  | CompareStreamStartEvent
+  | CompareStreamDeltaEvent
+  | CompareStreamModelEvent
+  | CompareStreamResultsEvent
+  | CompareStreamEndEvent;
 
 // ── Files / Batches ──────────────────────────────────────────────────────────
 
@@ -606,6 +687,31 @@ export interface CreateBatchParams {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * One entry in {@link BatchObject.results}, in OpenAI batch-output format.
+ *
+ * ```ts
+ * for (const r of batch.results ?? []) {
+ *   const body = r.response?.body as { choices?: Array<{ message?: { content?: string } }> } | undefined;
+ *   console.log(r.custom_id, body?.choices?.[0]?.message?.content);
+ * }
+ * ```
+ */
+export interface BatchResultItem {
+  id?: string;
+  /** Echoes the `custom_id` from the matching `BatchRequestItem`. */
+  custom_id: string;
+  response?: {
+    status_code?: number;
+    request_id?: string;
+    /** The endpoint's normal success payload, e.g. a chat completion. */
+    body?: Record<string, unknown>;
+  } | null;
+  /** Populated instead of `response` when this individual request failed. */
+  error?: Record<string, unknown> | null;
+  [key: string]: unknown;
+}
+
 export interface BatchObject {
   id: string;
   object?: string;
@@ -618,7 +724,11 @@ export interface BatchObject {
   created_at?: number | null;
   completed_at?: number | null;
   usage_synced?: boolean;
-  results?: Array<Record<string, unknown>>;
+  /**
+   * Per-request outputs, delivered inline once `status` is `"completed"` —
+   * there is no separate results file to download.
+   */
+  results?: BatchResultItem[];
   errors_detail?: Array<Record<string, unknown>>;
   error_file_id?: string | null;
   request_counts?: Record<string, unknown>;
@@ -900,11 +1010,21 @@ export interface ListVoicesParams {
 export interface Voice {
   voice_id: string;
   name: string;
+  /**
+   * Model that owns this voice, e.g. `"hexgrad/kokoro-82m"`. Voices are
+   * model-scoped, so pass it as `SpeechParams.model` when synthesising.
+   */
+  model?: string;
+  /** Provider that owns the model, e.g. `"hexgrad"`. */
+  brand?: string;
+  /** BCP-47-ish language tag as returned by the provider, e.g. `"en-us"`. */
+  language?: string;
+  gender?: string;
   // Optional: minimal voice objects (id + name only) must not break parsing;
   // labels are provider-defined and not always strings.
   category?: string;
   description?: string;
-  preview_url?: string;
+  preview_url?: string | null;
   labels?: Record<string, unknown>;
 }
 

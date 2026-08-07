@@ -1,12 +1,12 @@
 import { makeLazySSEIterable } from "../http.js";
 import type { HttpClient } from "../http.js";
 import type {
-  ChatCompletionChunk,
   RequestOptions,
   ResponsesListParams,
   ResponsesListResponse,
   ResponsesParams,
   ResponsesResponse,
+  ResponsesStreamEvent,
 } from "../types.js";
 
 export class ResponsesResource {
@@ -37,41 +37,39 @@ export class ResponsesResource {
    *
    * Auth: API key (`rsk_...`)
    *
-   * Returns an `AsyncIterable<ChatCompletionChunk>` that yields only
-   * chat-completion-chunk shaped events (`object: "chat.completion.chunk"`).
-   * Responses API lifecycle and reasoning events whose `type` field starts
-   * with `"response."` (e.g. `"response.reasoning_text.delta"`,
-   * `"response.reasoning_summary_text.delta"`) are silently dropped by the
-   * SSE parser — they are not exposed as a distinct type in this SDK yet.
+   * Returns an `AsyncIterable<ResponsesStreamEvent>`. The Responses API streams
+   * lifecycle events whose `type` field starts with `"response."` — the text
+   * itself arrives on `response.output_text.delta` frames as `event.delta`.
    *
    * @example
    * ```ts
    * const stream = client.responses.create({
    *   model: "openai/o4-mini",
-   *   input: [{ role: "user", content: "Tell me a story." }],
+   *   input: "Tell me a story.",
    *   stream: true,
    * });
    *
-   * for await (const chunk of stream) {
-   *   const text = chunk.choices[0]?.delta.content ?? "";
-   *   process.stdout.write(text);
+   * for await (const event of stream) {
+   *   if (event.type === "response.output_text.delta") {
+   *     process.stdout.write(String(event.delta ?? ""));
+   *   }
    * }
    * ```
    */
   create(
     params: ResponsesParams & { stream: true },
     opts?: RequestOptions,
-  ): AsyncIterable<ChatCompletionChunk>;
+  ): AsyncIterable<ResponsesStreamEvent>;
 
   create(
     params: ResponsesParams,
     opts?: RequestOptions,
-  ): Promise<ResponsesResponse> | AsyncIterable<ChatCompletionChunk>;
+  ): Promise<ResponsesResponse> | AsyncIterable<ResponsesStreamEvent>;
 
   create(
     params: ResponsesParams,
     opts?: RequestOptions,
-  ): Promise<ResponsesResponse> | AsyncIterable<ChatCompletionChunk> {
+  ): Promise<ResponsesResponse> | AsyncIterable<ResponsesStreamEvent> {
     if (params.stream === true) {
       return this.streamCreate(params, opts);
     }
@@ -81,8 +79,18 @@ export class ResponsesResource {
   private streamCreate(
     params: ResponsesParams,
     opts?: RequestOptions,
-  ): AsyncIterable<ChatCompletionChunk> {
-    return makeLazySSEIterable(this.http, "/v1/responses", params, opts);
+  ): AsyncIterable<ResponsesStreamEvent> {
+    // `emitResponseEvents` is required here: the shared SSE parser skips frames
+    // whose `type` starts with "response." so that chat callers only ever see
+    // ChatCompletionChunks. The Responses API emits nothing else, so without
+    // this the stream completes having yielded zero events.
+    return makeLazySSEIterable<ResponsesStreamEvent>(
+      this.http,
+      "/v1/responses",
+      params,
+      opts,
+      { emitResponseEvents: true },
+    );
   }
 
   /**
