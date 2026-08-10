@@ -147,7 +147,7 @@ describe("SSEStream.requestId", () => {
   });
 });
 
-describe("_requestId on non-streaming responses", () => {
+describe("requestId on non-streaming responses", () => {
   function jsonResponse(body: unknown, requestId?: string): Response {
     const headers: Record<string, string> = { "content-type": "application/json" };
     if (requestId) headers["x-request-id"] = requestId;
@@ -158,7 +158,7 @@ describe("_requestId on non-streaming responses", () => {
     const c = client(async () => jsonResponse({ id: "chatcmpl-1", choices: [] }, "req_nonstream"));
     const res = await c.chat.completions.create({ model: "m", messages: [] });
 
-    assert.equal(res._requestId, "req_nonstream");
+    assert.equal(res.requestId, "req_nonstream");
   });
 
   it("distinguishes concurrent non-streaming calls", async () => {
@@ -170,7 +170,7 @@ describe("_requestId on non-streaming responses", () => {
       c.chat.completions.create({ model: "m", messages: [] }),
       c.chat.completions.create({ model: "m", messages: [] }),
     ]);
-    const ids = results.map((r) => r._requestId);
+    const ids = results.map((r) => r.requestId);
 
     assert.equal(new Set(ids).size, 3, `expected 3 distinct ids, got ${JSON.stringify(ids)}`);
   });
@@ -183,24 +183,38 @@ describe("_requestId on non-streaming responses", () => {
     const c = client(async () => jsonResponse(body, "req_hidden"));
     const res = await c.chat.completions.create({ model: "m", messages: [] });
 
-    assert.equal(res._requestId, "req_hidden");
+    assert.equal(res.requestId, "req_hidden");
     assert.deepEqual(JSON.parse(JSON.stringify(res)), body);
-    assert.ok(!Object.keys(res).includes("_requestId"));
-    assert.ok(!("_requestId" in { ...res }));
+    assert.ok(!Object.keys(res).includes("requestId"));
+    assert.ok(!("requestId" in { ...res }));
   });
 
   it("is undefined when the response carries no header", async () => {
     const c = client(async () => jsonResponse({ id: "x", choices: [] }));
     const res = await c.chat.completions.create({ model: "m", messages: [] });
 
-    assert.equal(res._requestId, undefined);
+    assert.equal(res.requestId, undefined);
+  });
+
+  it("never clobbers a requestId the gateway actually sent", async () => {
+    // Sharing the name with a potential server field is the cost of parity with
+    // stream.requestId. Losing server data to SDK metadata would be invisible
+    // from the outside, so the server's value wins.
+    const c = client(async () =>
+      jsonResponse({ id: "x", requestId: "from-server", choices: [] }, "req_from_header"),
+    );
+    const res = await c.chat.completions.create({ model: "m", messages: [] });
+
+    assert.equal(res.requestId, "from-server");
+    // Still the server's own field, so it stays enumerable and serialisable.
+    assert.equal(JSON.parse(JSON.stringify(res)).requestId, "from-server");
   });
 
   it("is attached on other non-streaming surfaces too", async () => {
     const c = client(async () => jsonResponse({ data: [{ embedding: [1] }] }, "req_embed"));
     const res = await c.embeddings.create({ model: "m", input: "hi" });
 
-    assert.equal(res._requestId, "req_embed");
+    assert.equal(res.requestId, "req_embed");
   });
 
   it("leaves array bodies untouched", async () => {

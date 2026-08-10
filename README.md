@@ -69,7 +69,7 @@ Every response carries an `x-request-id` header. The SDK surfaces it on the
 value each call returns, so a response can always be traced back to the call
 that made it — including with many requests in flight.
 
-**Non-streaming** — the id is on the returned object as `_requestId`:
+**Non-streaming** — the id is on the returned object as `requestId`:
 
 ```ts
 const completion = await client.chat.completions.create({
@@ -77,7 +77,7 @@ const completion = await client.chat.completions.create({
   messages: [{ role: "user", content: "Hello!" }],
 });
 
-logger.info({ requestId: completion._requestId }, "completion done");
+logger.info({ requestId: completion.requestId }, "completion done");
 ```
 
 It is **non-enumerable**, so it never shows up in `JSON.stringify`,
@@ -192,7 +192,7 @@ const client = new MeshAPI({
 > request id on successful responses. Now that the id is on the returned value
 > — where it can actually be correlated to a specific call — the hook was
 > redundant, and it could never answer "which of these concurrent requests was
-> that?". Replace it with `_requestId` / `stream.requestId`, or with the `fetch`
+> that?". Replace it with `requestId` / `stream.requestId`, or with the `fetch`
 > wrapper above if you were using it for general logging. Note that a custom
 > `fetch` sees the raw URL, including the signed-upload query string used by
 > `rag.uploadFile()` — strip it before logging if that matters to you.

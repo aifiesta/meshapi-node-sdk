@@ -49,16 +49,20 @@ export interface MeshAPIConfig {
 /**
  * A parsed response object carrying the id of the request that produced it.
  *
- * `_requestId` is attached by the SDK, not returned by the gateway — hence the
- * underscore, which keeps it clearly distinct from the server's own fields. It
- * is **non-enumerable**, so it never appears in `JSON.stringify`,
+ * Named `requestId` to match {@link SSEStream.requestId} — one concept, one
+ * name, whether the call streamed or not. (openai-node spells its equivalent
+ * `_request_id`, marking it as SDK-added rather than a server field; the extra
+ * character buys nothing here and costs a caller having to remember which
+ * spelling belongs to which call shape.)
+ *
+ * Attached **non-enumerably**, so it never appears in `JSON.stringify`,
  * `Object.keys`, object spread or deep-equality comparisons; existing code that
  * serialises or compares responses behaves exactly as before.
  *
  * Arrays and non-objects are passed through untouched — there is nowhere to put
  * the property without corrupting the shape.
  */
-export type WithRequestId<T> = T extends object ? T & { readonly _requestId?: string } : T;
+export type WithRequestId<T> = T extends object ? T & { readonly requestId?: string } : T;
 
 /**
  * Attach the response's `x-request-id` to a parsed JSON body.
@@ -72,7 +76,14 @@ function attachRequestId<T>(value: T, response: Response): WithRequestId<T> {
   }
   const requestId = response.headers.get("x-request-id");
   if (!requestId) return value as WithRequestId<T>;
-  return Object.defineProperty(value, "_requestId", {
+  // Never clobber a field the gateway actually sent. Our success bodies are
+  // snake_case so a collision is unlikely, but silently replacing server data
+  // with SDK metadata is the kind of bug that is impossible to diagnose from
+  // the outside — dropping our own addition is the safe direction to fail.
+  if (Object.prototype.hasOwnProperty.call(value, "requestId")) {
+    return value as WithRequestId<T>;
+  }
+  return Object.defineProperty(value, "requestId", {
     value: requestId,
     enumerable: false,
   }) as WithRequestId<T>;
@@ -544,7 +555,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * An SSE stream, plus the id of the request that produced it.
  *
  * The streaming counterpart of {@link WithRequestId}: non-streaming calls carry
- * the id on the returned object as `_requestId`, and a stream carries it here.
+ * the id on the returned object as `requestId`, and a stream carries it here.
  * Either way it lives on what the call returned, so correlating a response to
  * its call is structural — it holds with any number of requests in flight.
  */
