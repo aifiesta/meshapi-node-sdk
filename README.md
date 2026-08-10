@@ -94,6 +94,50 @@ The hook fires once per HTTP response, for every request the client makes:
 Exceptions thrown inside the hook are swallowed, so a logging failure can never
 break the request it is observing.
 
+#### Correlating a specific call
+
+`onResponse` is configured once on the client, so with several requests in
+flight it cannot tell you *which* call a given response belongs to. For streams,
+read `requestId` off the returned stream instead — it is per-call, so
+correlation is structural:
+
+```ts
+const stream = client.chat.completions.create({ model, messages, stream: true });
+
+logger.info({ requestId: await stream.requestId }, "stream started");
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta.content ?? "");
+}
+```
+
+It resolves as soon as the response headers arrive — before the first chunk —
+and stays available for the life of the stream, so it is still readable in a
+`catch` after a mid-stream failure or an abort:
+
+```ts
+const streams = [a, b, c].map((messages) =>
+  client.chat.completions.create({ model, messages, stream: true }),
+);
+
+await Promise.all(
+  streams.map(async (stream) => {
+    try {
+      for await (const chunk of stream) { /* ... */ }
+    } catch (err) {
+      logger.error({ requestId: await stream.requestId }, "stream failed");
+    }
+  }),
+);
+```
+
+Available on every streaming surface: `chat.completions.create({ stream: true })`,
+`responses.create({ stream: true })`, `images.stream()` and
+`compare.create({ stream: true })`. Reading it starts the request if iteration
+has not already begun; the stream then reuses that same request. It resolves to
+`undefined` — never rejects — if the response carried no header or the request
+failed outright, since the failure itself surfaces through iteration.
+
 ## Chat completions
 
 ```ts

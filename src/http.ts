@@ -130,7 +130,7 @@ const BACKOFF_MAX_MS = 30_000;
  * value.
  */
 export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
-export const SDK_VERSION_VALUE = "node/1.0.4";
+export const SDK_VERSION_VALUE = "node/1.1.0";
 
 /**
  * Build the URL reported to `onResponse`, with third-party credentials removed.
@@ -529,6 +529,9 @@ export async function* parseJSONSSEStream<T>(
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: false });
   let remainder = "";
+  // Captured once, up front: the caller may abort mid-stream, and this is the
+  // id every error raised below falls back to.
+  const headerRequestId = response.headers.get("x-request-id") ?? undefined;
 
   try {
     while (true) {
@@ -537,7 +540,7 @@ export async function* parseJSONSSEStream<T>(
       if (done) {
         // Flush any remaining buffered data
         if (remainder.trim()) {
-          const chunk = tryParseJSONSSEFrame<T>(remainder, sseOpts);
+          const chunk = tryParseJSONSSEFrame<T>(remainder, sseOpts, headerRequestId);
           if (chunk !== null) yield chunk;
         }
         break;
@@ -562,7 +565,7 @@ export async function* parseJSONSSEStream<T>(
           return;
         }
 
-        const chunk = tryParseJSONSSEFrame<T>(frame, sseOpts);
+        const chunk = tryParseJSONSSEFrame<T>(frame, sseOpts, headerRequestId);
         if (chunk !== null) yield chunk;
       }
     }
@@ -580,7 +583,11 @@ function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
   return tryParseJSONSSEFrame<ChatCompletionChunk>(frame);
 }
 
-function tryParseJSONSSEFrame<T>(frame: string, sseOpts?: SSEParseOptions): T | null {
+function tryParseJSONSSEFrame<T>(
+  frame: string,
+  sseOpts?: SSEParseOptions,
+  fallbackRequestId?: string,
+): T | null {
   const dataLines: string[] = [];
 
   for (const line of frame.split("\n")) {
@@ -607,8 +614,13 @@ function tryParseJSONSSEFrame<T>(frame: string, sseOpts?: SSEParseOptions): T | 
     // Mid-stream error frame: server sends {error: {code, message}} before [DONE]
     if ("error" in parsed && isRecord(parsed["error"])) {
       const err = parsed["error"];
-      const requestId =
-        typeof parsed["request_id"] === "string" ? parsed["request_id"] : "";
+      // The frame's own `request_id` wins, but older gateway versions omit it
+      // entirely — and by the time a mid-stream error arrives the response
+      // headers are the only other place the id survives. Without this fallback
+      // the single error a caller most needs to report is the one they cannot
+      // identify.
+      const fromFrame = typeof parsed["request_id"] === "string" ? parsed["request_id"] : "";
+      const requestId = fromFrame || fallbackRequestId || "";
       throw new MeshAPIApiError(0, {
         error: {
           code: typeof err["code"] === "string" ? err["code"] : "upstream_error",
@@ -647,10 +659,46 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // ── Lazy SSE iterable helper ───────────────────────────────────────────────────
 
 /**
- * Returns a lazy `AsyncIterable<ChatCompletionChunk>` that only initiates the
- * streaming POST when the caller begins iterating. Shared by all resources that
- * stream SSE (chat/completions, responses, …) so the lazy-init machinery and
- * iterator protocol live in one place.
+ * An SSE stream, plus the id of the request that produced it.
+ *
+ * `onResponse` is configured once on the client, so with several streams in
+ * flight it cannot say which response belongs to which call. `requestId` can:
+ * it lives on the object the call returned, so correlation is structural rather
+ * than something the caller has to reconstruct.
+ */
+export interface SSEStream<T> extends AsyncIterable<T> {
+  /**
+   * The `x-request-id` of the response backing this stream — quote it when
+   * contacting support.
+   *
+   * Resolves as soon as the response headers arrive, which is *before* the
+   * first chunk, so it is available for the whole life of the stream, including
+   * after an abort or a mid-stream failure.
+   *
+   * **Reading this starts the request** if iteration has not already started;
+   * the stream itself then reuses that same request rather than issuing a
+   * second one.
+   *
+   * `undefined` if the response carried no such header, or if the request
+   * failed before any response arrived. It never rejects — a failing request
+   * surfaces through iteration, and duplicating the rejection here would
+   * produce an unhandled rejection for callers who only wanted the id.
+   *
+   * @example
+   * ```ts
+   * const stream = client.chat.completions.create({ ...params, stream: true });
+   * logger.info({ requestId: await stream.requestId }, "stream started");
+   * for await (const chunk of stream) { ... }
+   * ```
+   */
+  readonly requestId: Promise<string | undefined>;
+}
+
+/**
+ * Returns a lazy `SSEStream<ChatCompletionChunk>` that only initiates the
+ * streaming POST when the caller begins iterating (or reads `requestId`).
+ * Shared by all resources that stream SSE (chat/completions, responses, …) so
+ * the lazy-init machinery and iterator protocol live in one place.
  */
 export function makeLazySSEIterable<T = ChatCompletionChunk>(
   http: HttpClient,
@@ -658,24 +706,41 @@ export function makeLazySSEIterable<T = ChatCompletionChunk>(
   params: unknown,
   opts?: RequestOptions,
   sseOpts?: SSEParseOptions,
-): AsyncIterable<T> {
+): SSEStream<T> {
+  // Memoised at the *iterable* level, not per-iterator: `requestId` and the
+  // iteration have to describe the same HTTP request, and a second
+  // [Symbol.asyncIterator]() must not silently issue — and bill for — a second
+  // upstream call.
+  let started: Promise<{ response: Response; iterator: AsyncIterator<T> }> | null = null;
+
+  const start = (): Promise<{ response: Response; iterator: AsyncIterator<T> }> => {
+    if (!started) {
+      started = (async () => {
+        const response = await http.stream(path, params, opts);
+        const gen = parseJSONSSEStream<T>(response, sseOpts);
+        return { response, iterator: gen[Symbol.asyncIterator]() };
+      })();
+    }
+    return started;
+  };
+
   return {
+    get requestId(): Promise<string | undefined> {
+      return start().then(
+        ({ response }) => response.headers.get("x-request-id") ?? undefined,
+        () => undefined,
+      );
+    },
+
     [Symbol.asyncIterator](): AsyncIterator<T> {
       let iterator: AsyncIterator<T> | null = null;
 
-      const init = async (): Promise<AsyncIterator<T>> => {
-        const response = await http.stream(path, params, opts);
-        const gen = parseJSONSSEStream<T>(response, sseOpts);
-        return gen[Symbol.asyncIterator]();
-      };
-
       return {
         async next(): Promise<IteratorResult<T>> {
-          // `init()` is called at most once: `for await...of` — the only
-          // sensible consumer of an SSE stream — awaits each next() before
-          // issuing the next, so concurrent calls here are unreachable.
+          // `start()` is memoised, so this resolves to the same iterator every
+          // time — including when `requestId` kicked the request off first.
           if (!iterator) {
-            iterator = await init();
+            iterator = (await start()).iterator;
           }
           return iterator.next();
         },

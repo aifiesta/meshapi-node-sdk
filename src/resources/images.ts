@@ -1,5 +1,5 @@
 import { makeLazySSEIterable } from "../http.js";
-import type { HttpClient } from "../http.js";
+import type { HttpClient, SSEStream } from "../http.js";
 import type {
   ImageEditParams,
   ImageGenerationChunk,
@@ -15,7 +15,7 @@ export class ImagesResource {
     return this.http.post<ImageGenerationResponse>("/v1/images/generations", params, opts);
   }
 
-  stream(params: ImageGenerationParams, opts?: RequestOptions): AsyncIterable<ImageGenerationChunk> {
+  stream(params: ImageGenerationParams, opts?: RequestOptions): SSEStream<ImageGenerationChunk> {
     return makeLazySSEIterable(this.http, "/v1/images/generations", { ...params, stream: true }, opts);
   }
 
