@@ -147,6 +147,73 @@ describe("SSEStream.requestId", () => {
   });
 });
 
+describe("_requestId on non-streaming responses", () => {
+  function jsonResponse(body: unknown, requestId?: string): Response {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (requestId) headers["x-request-id"] = requestId;
+    return new Response(JSON.stringify(body), { status: 200, headers });
+  }
+
+  it("is attached to the returned object", async () => {
+    const c = client(async () => jsonResponse({ id: "chatcmpl-1", choices: [] }, "req_nonstream"));
+    const res = await c.chat.completions.create({ model: "m", messages: [] });
+
+    assert.equal(res._requestId, "req_nonstream");
+  });
+
+  it("distinguishes concurrent non-streaming calls", async () => {
+    let n = 0;
+    const c = client(async () => jsonResponse({ id: "x", choices: [] }, `req_${++n}`));
+
+    const results = await Promise.all([
+      c.chat.completions.create({ model: "m", messages: [] }),
+      c.chat.completions.create({ model: "m", messages: [] }),
+      c.chat.completions.create({ model: "m", messages: [] }),
+    ]);
+    const ids = results.map((r) => r._requestId);
+
+    assert.equal(new Set(ids).size, 3, `expected 3 distinct ids, got ${JSON.stringify(ids)}`);
+  });
+
+  it("is non-enumerable, so serialisation and comparison are unchanged", async () => {
+    // The property must not leak into the wire shape — code that round-trips a
+    // response through JSON, or deep-equals it against a fixture, must not
+    // start failing because the SDK added a field.
+    const body = { id: "chatcmpl-1", choices: [] };
+    const c = client(async () => jsonResponse(body, "req_hidden"));
+    const res = await c.chat.completions.create({ model: "m", messages: [] });
+
+    assert.equal(res._requestId, "req_hidden");
+    assert.deepEqual(JSON.parse(JSON.stringify(res)), body);
+    assert.ok(!Object.keys(res).includes("_requestId"));
+    assert.ok(!("_requestId" in { ...res }));
+  });
+
+  it("is undefined when the response carries no header", async () => {
+    const c = client(async () => jsonResponse({ id: "x", choices: [] }));
+    const res = await c.chat.completions.create({ model: "m", messages: [] });
+
+    assert.equal(res._requestId, undefined);
+  });
+
+  it("is attached on other non-streaming surfaces too", async () => {
+    const c = client(async () => jsonResponse({ data: [{ embedding: [1] }] }, "req_embed"));
+    const res = await c.embeddings.create({ model: "m", input: "hi" });
+
+    assert.equal(res._requestId, "req_embed");
+  });
+
+  it("leaves array bodies untouched", async () => {
+    // /v1/models returns a bare array — defineProperty on it would be visible
+    // via Object.keys and could confuse consumers, so arrays are passed through.
+    const c = client(async () => jsonResponse([{ id: "m1" }], "req_arr"));
+    const models = await c.models.list();
+
+    assert.ok(Array.isArray(models));
+    assert.equal(models.length, 1);
+  });
+});
+
 describe("SSEStream.cancel — releasing an unconsumed stream", () => {
   /**
    * A response whose body reports whether it was cancelled. `requestId` opens

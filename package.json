@@ -1,6 +1,6 @@
 {
   "name": "meshapi-node-sdk",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "Official TypeScript SDK for Mesh API. One OpenAI-compatible key, 321 LLMs, unified billing, prompt templates, batches.",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -27,8 +27,8 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts tests/on-response.test.ts tests/regressions.test.ts tests/stream-request-id.test.ts",
-    "test:unit": "node --import tsx/esm --test tests/contract.test.ts tests/errors.test.ts tests/sse.test.ts tests/structured.test.ts tests/on-response.test.ts tests/regressions.test.ts tests/stream-request-id.test.ts",
+    "test": "node --import tsx/esm --test \"tests/**/*.test.ts\"",
+    "test:unit": "node --import tsx/esm --test \"tests/**/*.test.ts\"",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
