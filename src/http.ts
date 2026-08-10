@@ -570,6 +570,15 @@ export async function* parseJSONSSEStream<T>(
       }
     }
   } finally {
+    // `releaseLock()` alone does NOT close the body: it detaches the reader and
+    // leaves the underlying HTTP response unread, so `break`-ing out of a
+    // `for await` (or bailing on a mid-stream error frame) held the socket open
+    // and left the provider generating into it. Cancel first, then release.
+    try {
+      await reader.cancel();
+    } catch {
+      // Already errored or closed — nothing to release the peer from.
+    }
     reader.releaseLock();
   }
 }
@@ -692,6 +701,35 @@ export interface SSEStream<T> extends AsyncIterable<T> {
    * ```
    */
   readonly requestId: Promise<string | undefined>;
+
+  /**
+   * Abandon the stream and release the underlying HTTP connection.
+   *
+   * Only needed when you start a stream and then decide **not** to consume it —
+   * in practice, after reading {@link requestId} and bailing out. Reading that
+   * property issues the request, and an unread response body keeps the socket
+   * open and the provider generating into it until a timeout.
+   *
+   * Not needed for the normal paths: running a `for await` to completion,
+   * `break`ing out of one, or a mid-stream failure all release the connection
+   * on their own.
+   *
+   * Idempotent, never throws, and safe to call at any point — before the
+   * response arrives (the in-flight request is aborted), during iteration (the
+   * pending `next()` rejects with an abort error), or after completion (a
+   * no-op).
+   *
+   * Also wired to `Symbol.asyncDispose`, so `await using` handles it where the
+   * runtime supports explicit resource management.
+   *
+   * @example
+   * ```ts
+   * const stream = client.chat.completions.create({ ...params, stream: true });
+   * const requestId = await stream.requestId;
+   * if (!shouldProceed(requestId)) await stream.cancel();
+   * ```
+   */
+  cancel(): Promise<void>;
 }
 
 /**
@@ -713,15 +751,52 @@ export function makeLazySSEIterable<T = ChatCompletionChunk>(
   // upstream call.
   let started: Promise<{ response: Response; iterator: AsyncIterator<T> }> | null = null;
 
+  // Lets `cancel()` abort a request that has not produced a response yet —
+  // reading `requestId` can return control to the caller before headers arrive.
+  // Merged with any caller-supplied signal rather than replacing it.
+  const controller = new AbortController();
+  const streamOpts: RequestOptions = {
+    ...opts,
+    signal: opts?.signal
+      ? AbortSignal.any([opts.signal, controller.signal])
+      : controller.signal,
+  };
+
+  let cancelled = false;
+
   const start = (): Promise<{ response: Response; iterator: AsyncIterator<T> }> => {
     if (!started) {
       started = (async () => {
-        const response = await http.stream(path, params, opts);
+        const response = await http.stream(path, params, streamOpts);
         const gen = parseJSONSSEStream<T>(response, sseOpts);
         return { response, iterator: gen[Symbol.asyncIterator]() };
       })();
     }
     return started;
+  };
+
+  const cancel = async (): Promise<void> => {
+    if (cancelled) return;
+    cancelled = true;
+    controller.abort();
+    if (!started) return; // Never issued a request — nothing to release.
+    try {
+      const { response, iterator } = await started;
+      // If iteration had begun, closing the generator runs its `finally`, which
+      // cancels the reader and with it the body.
+      await iterator.return?.(undefined);
+      // If it had NOT begun, that call was a no-op: returning a generator
+      // suspended at its start never executes the body, so `finally` never
+      // runs and the response is still untouched. This is precisely the
+      // abandoned-after-reading-requestId case, so cancel the body directly.
+      // `locked` distinguishes the two — a started generator holds the reader.
+      if (response.body && !response.body.locked) {
+        await response.body.cancel();
+      }
+    } catch {
+      // The request itself failed, or the body is already gone. Either way
+      // there is no connection left to release.
+    }
   };
 
   return {
@@ -731,6 +806,15 @@ export function makeLazySSEIterable<T = ChatCompletionChunk>(
         () => undefined,
       );
     },
+
+    cancel,
+
+    // Explicit resource management (`await using`) where the runtime has it.
+    // Declared via computed key so this still compiles on targets whose lib
+    // does not define the symbol.
+    ...(typeof (Symbol as { asyncDispose?: symbol }).asyncDispose === "symbol"
+      ? { [(Symbol as unknown as { asyncDispose: symbol }).asyncDispose]: cancel }
+      : {}),
 
     [Symbol.asyncIterator](): AsyncIterator<T> {
       let iterator: AsyncIterator<T> | null = null;

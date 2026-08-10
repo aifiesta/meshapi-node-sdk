@@ -138,6 +138,32 @@ has not already begun; the stream then reuses that same request. It resolves to
 `undefined` — never rejects — if the response carried no header or the request
 failed outright, since the failure itself surfaces through iteration.
 
+#### Abandoning a stream
+
+If you read `requestId` and then decide **not** to consume the stream, call
+`cancel()` — reading the property issues the request, and an unread response
+body keeps the connection open with the provider still generating into it:
+
+```ts
+const stream = client.chat.completions.create({ model, messages, stream: true });
+
+const requestId = await stream.requestId;
+if (!shouldProceed(requestId)) {
+  await stream.cancel();
+  return;
+}
+
+for await (const chunk of stream) { ... }
+```
+
+`cancel()` is idempotent and never throws. Where the runtime supports explicit
+resource management it is also wired to `Symbol.asyncDispose`, so
+`await using stream = ...` cleans up for you.
+
+You do **not** need it on the normal paths — running a loop to completion,
+`break`ing out of one, or a mid-stream failure all release the connection
+themselves.
+
 ## Chat completions
 
 ```ts

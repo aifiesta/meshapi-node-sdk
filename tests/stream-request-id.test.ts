@@ -147,6 +147,94 @@ describe("SSEStream.requestId", () => {
   });
 });
 
+describe("SSEStream.cancel — releasing an unconsumed stream", () => {
+  /**
+   * A response whose body reports whether it was cancelled. `requestId` opens
+   * the response but a generator is lazy, so nothing reads the body until
+   * iteration — an abandoned stream would otherwise hold the socket open.
+   */
+  function trackedSSEResponse(): { response: Response; cancelled: () => boolean } {
+    let wasCancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(chunk)}\n\n`));
+        // Deliberately left open: mimics a provider still generating.
+      },
+      cancel() {
+        wasCancelled = true;
+      },
+    });
+    return {
+      response: new Response(stream, {
+        status: 200,
+        headers: { "content-type": "text/event-stream", "x-request-id": "req_cancel" },
+      }),
+      cancelled: () => wasCancelled,
+    };
+  }
+
+  it("cancels the body when a stream is started but never iterated", async () => {
+    const tracked = trackedSSEResponse();
+    const c = client(async () => tracked.response);
+    const stream = c.chat.completions.create({ model: "m", messages: [], stream: true });
+
+    assert.equal(await stream.requestId, "req_cancel");
+    assert.equal(tracked.cancelled(), false, "body should still be open before cancel()");
+
+    await stream.cancel();
+    assert.equal(tracked.cancelled(), true, "cancel() must release the connection");
+  });
+
+  it("is idempotent and never throws", async () => {
+    const tracked = trackedSSEResponse();
+    const c = client(async () => tracked.response);
+    const stream = c.chat.completions.create({ model: "m", messages: [], stream: true });
+
+    await stream.requestId;
+    await stream.cancel();
+    await stream.cancel();
+    await stream.cancel();
+    assert.equal(tracked.cancelled(), true);
+  });
+
+  it("is a no-op when the stream was never started", async () => {
+    let calls = 0;
+    const c = client(async () => {
+      calls++;
+      return sseResponse([chunk, "[DONE]"], "req_x");
+    });
+    const stream = c.chat.completions.create({ model: "m", messages: [], stream: true });
+
+    await stream.cancel();
+    assert.equal(calls, 0, "cancel() must not issue a request of its own");
+  });
+
+  it("breaking out of a for-await releases the body", async () => {
+    // Pre-existing hole: releaseLock() detaches the reader without closing the
+    // response, so an early `break` left the socket open.
+    const tracked = trackedSSEResponse();
+    const c = client(async () => tracked.response);
+    const stream = c.chat.completions.create({ model: "m", messages: [], stream: true });
+
+    for await (const _ of stream) break;
+
+    assert.equal(tracked.cancelled(), true, "break must release the connection");
+  });
+
+  it("exposes Symbol.asyncDispose where the runtime supports it", async () => {
+    const asyncDispose = (Symbol as { asyncDispose?: symbol }).asyncDispose;
+    if (typeof asyncDispose !== "symbol") return; // older runtime — nothing to assert
+
+    const tracked = trackedSSEResponse();
+    const c = client(async () => tracked.response);
+    const stream = c.chat.completions.create({ model: "m", messages: [], stream: true });
+
+    await stream.requestId;
+    await (stream as unknown as Record<symbol, () => Promise<void>>)[asyncDispose]();
+    assert.equal(tracked.cancelled(), true);
+  });
+});
+
 describe("mid-stream error frames carry a request id", () => {
   const errorFrame = { error: { code: "upstream_error", message: "boom" } };
 
