@@ -36,6 +36,10 @@ export class ModelsResource {
   /**
    * List only free-tier models (zero prompt + completion cost).
    *
+   * Convenience wrapper over `list({ free: true })`. The backend's
+   * `/v1/models/free` shortcut was removed in favour of the `?free=` query
+   * parameter; this method name stays so callers don't have to change.
+   *
    * Auth: API key (`rsk_...`) or Supabase JWT
    *
    * @example
@@ -44,11 +48,13 @@ export class ModelsResource {
    * ```
    */
   async free(opts?: RequestOptions): Promise<ModelInfo[]> {
-    return this.http.get<ModelInfo[]>("/v1/models/free", opts);
+    return this.list({ free: true }, opts);
   }
 
   /**
    * List only paid models.
+   *
+   * Convenience wrapper over `list({ free: false })` — see `free()`.
    *
    * Auth: API key (`rsk_...`) or Supabase JWT
    *
@@ -58,7 +64,7 @@ export class ModelsResource {
    * ```
    */
   async paid(opts?: RequestOptions): Promise<ModelInfo[]> {
-    return this.http.get<ModelInfo[]>("/v1/models/paid", opts);
+    return this.list({ free: false }, opts);
   }
 
   /**

@@ -130,7 +130,7 @@ const BACKOFF_MAX_MS = 30_000;
  * value.
  */
 export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
-export const SDK_VERSION_VALUE = "node/0.1.3";
+export const SDK_VERSION_VALUE = "node/1.0.4";
 
 /**
  * Build the URL reported to `onResponse`, with third-party credentials removed.
