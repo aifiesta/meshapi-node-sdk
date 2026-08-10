@@ -44,77 +44,49 @@ export interface MeshAPIConfig {
    */
   maxRetries?: number;
 
-  /**
-   * Called once per HTTP response, for every request the client makes —
-   * streaming and non-streaming, successful and failed.
-   *
-   * The gateway returns a request id in the `x-request-id` response header.
-   * On failures that id is already available via `MeshAPIApiError.requestId`,
-   * but on **successful** responses it was previously discarded. This hook
-   * surfaces it, so a slow-but-successful request can be correlated with
-   * server-side logs.
-   *
-   * Failures in the hook never affect the request: a synchronous throw is
-   * swallowed, and so is a rejection from an `async` hook.
-   *
-   * An `async` hook is accepted and **not awaited** — the response is returned as
-   * soon as the hook is invoked, so logging cannot add latency. Anything that
-   * must happen before the caller sees the response has to be synchronous.
-   *
-   * Typed as returning `void` rather than `void | Promise<void>` deliberately:
-   * TypeScript's void-return rule already permits an `async` hook, while a union
-   * would reject ordinary concise bodies such as `(info) => buffer.push(info)`.
-   *
-   * @example
-   * ```ts
-   * const client = new MeshAPI({
-   *   baseUrl: "https://api.meshapi.ai",
-   *   token: process.env.MESHAPI_API_KEY!,
-   *   onResponse: ({ requestId, status, durationMs }) => {
-   *     logger.info({ requestId, status, durationMs }, "meshapi request");
-   *   },
-   * });
-   * ```
-   */
-  onResponse?: (info: ResponseInfo) => void;
 }
 
-/** Metadata passed to {@link MeshAPIConfig.onResponse} for each HTTP response. */
-export interface ResponseInfo {
-  /**
-   * Value of the `x-request-id` response header — quote this when contacting
-   * support. `undefined` when the response carries no such header, which is the
-   * case for the third-party signed-URL PUT performed by `rag.uploadFile()`.
-   */
-  requestId: string | undefined;
+/**
+ * A parsed response object carrying the id of the request that produced it.
+ *
+ * Named `requestId` to match {@link SSEStream.requestId} — one concept, one
+ * name, whether the call streamed or not. (openai-node spells its equivalent
+ * `_request_id`, marking it as SDK-added rather than a server field; the extra
+ * character buys nothing here and costs a caller having to remember which
+ * spelling belongs to which call shape.)
+ *
+ * Attached **non-enumerably**, so it never appears in `JSON.stringify`,
+ * `Object.keys`, object spread or deep-equality comparisons; existing code that
+ * serialises or compares responses behaves exactly as before.
+ *
+ * Arrays and non-objects are passed through untouched — there is nowhere to put
+ * the property without corrupting the shape.
+ */
+export type WithRequestId<T> = T extends object ? T & { readonly requestId?: string } : T;
 
-  /** HTTP status code of the response. */
-  status: number;
-
-  /** HTTP method of the request. */
-  method: string;
-
-  /**
-   * Request URL.
-   *
-   * For gateway requests this is the full URL including its query string, which
-   * carries only non-sensitive parameters such as `?limit=20` — gateway auth
-   * travels in the `Authorization` header, never the URL.
-   *
-   * For requests to any other host the query string is **removed**. The only
-   * such request the SDK makes is the signed-storage PUT inside
-   * `rag.uploadFile()`, whose query is a short-lived upload credential; passing
-   * it to a logging callback would persist a reusable write capability.
-   */
-  url: string;
-
-  /**
-   * Milliseconds from issuing the request until response headers arrived.
-   *
-   * For streaming requests this is time-to-first-byte, not the duration of the
-   * whole stream — the body is still being consumed when this hook fires.
-   */
-  durationMs: number;
+/**
+ * Attach the response's `x-request-id` to a parsed JSON body.
+ *
+ * Non-enumerable on purpose: a response object is routinely re-serialised or
+ * compared, and an extra visible key would change both.
+ */
+function attachRequestId<T>(value: T, response: Response): WithRequestId<T> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value as WithRequestId<T>;
+  }
+  const requestId = response.headers.get("x-request-id");
+  if (!requestId) return value as WithRequestId<T>;
+  // Never clobber a field the gateway actually sent. Our success bodies are
+  // snake_case so a collision is unlikely, but silently replacing server data
+  // with SDK metadata is the kind of bug that is impossible to diagnose from
+  // the outside — dropping our own addition is the safe direction to fail.
+  if (Object.prototype.hasOwnProperty.call(value, "requestId")) {
+    return value as WithRequestId<T>;
+  }
+  return Object.defineProperty(value, "requestId", {
+    value: requestId,
+    enumerable: false,
+  }) as WithRequestId<T>;
 }
 
 const RETRY_STATUS_CODES = new Set([429, 502, 503, 504]);
@@ -126,95 +98,11 @@ const BACKOFF_MAX_MS = 30_000;
  *
  * `SDK_VERSION_VALUE` must match the `version` field in package.json. It was
  * previously duplicated in `resources/realtime.ts`, which is how it drifted;
- * `tests/on-response.test.ts` now asserts it so a release cannot ship a stale
+ * `tests/sdk-version.test.ts` now asserts it so a release cannot ship a stale
  * value.
  */
 export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
-export const SDK_VERSION_VALUE = "node/1.0.4";
-
-/**
- * Build the URL reported to `onResponse`, with third-party credentials removed.
- *
- * `rag.uploadFile()` PUTs file bytes to a signed storage URL whose query string
- * *is* the credential — for GCS that is `X-Goog-Credential` plus
- * `X-Goog-Signature`, several hundred characters granting write access until it
- * expires. Handing that to a logging callback would persist a live upload
- * capability in the caller's logs, so the query is dropped for every host other
- * than the gateway.
- *
- * Fails safe: if `baseUrl` or the request URL cannot be parsed, the query is
- * dropped rather than assumed harmless.
- */
-function redactUrl(raw: string, gatewayHost: string): string {
-  const stripQuery = () => {
-    const q = raw.indexOf("?");
-    return q === -1 ? raw : raw.slice(0, q);
-  };
-  if (!gatewayHost) return stripQuery();
-  try {
-    const url = new URL(raw);
-    if (url.host === gatewayHost) return raw;
-    url.search = "";
-    url.hash = "";
-    return url.toString();
-  } catch {
-    return stripQuery();
-  }
-}
-
-/**
- * Wrap a fetch implementation so `onResponse` fires for every response.
- *
- * Wrapping at this single point means all request paths are covered —
- * `request`, `requestRaw`, `stream`, `postMultipart` and `rawFetch` all go
- * through `fetchImpl`. Returns the original function untouched when no hook is
- * configured, so there is no overhead for callers that do not use it.
- *
- * A user-supplied `config.fetch` is wrapped rather than replaced, so test
- * mocks keep working.
- */
-function wrapFetch(
-  baseFetch: typeof fetch,
-  onResponse: MeshAPIConfig["onResponse"],
-  baseUrl: string,
-): typeof fetch {
-  if (!onResponse) return baseFetch;
-
-  let gatewayHost = "";
-  try {
-    gatewayHost = new URL(baseUrl).host;
-  } catch {
-    // Leave empty — redactUrl then strips the query from every URL.
-  }
-
-  return async function fetchWithResponseHook(input, init) {
-    const startedAt = Date.now();
-    const response = await baseFetch(input, init);
-    try {
-      // Typed `unknown` because the declared return type is `void` while an
-      // `async` hook actually returns a promise at runtime.
-      const result: unknown = onResponse({
-        requestId: response.headers.get("x-request-id") ?? undefined,
-        status: response.status,
-        method: init?.method ?? "GET",
-        url: redactUrl(typeof input === "string" ? input : String(input), gatewayHost),
-        durationMs: Date.now() - startedAt,
-      });
-
-      // An async hook returns a promise. It is deliberately not awaited — the
-      // response must not wait on logging — but an unobserved rejection would
-      // become an unhandled rejection and can terminate the process, so attach
-      // a catch. Guarded by a thenable check so the common synchronous hook
-      // allocates nothing.
-      if (typeof (result as PromiseLike<void> | undefined)?.then === "function") {
-        void (result as Promise<void>).then(undefined, () => {});
-      }
-    } catch {
-      // A synchronous throw from the hook must not break the request either.
-    }
-    return response;
-  };
-}
+export const SDK_VERSION_VALUE = "node/2.0.0";
 
 // ── HTTP client ───────────────────────────────────────────────────────────────
 
@@ -231,11 +119,7 @@ export class HttpClient {
     this.token = config.token;
     this.defaultTimeoutMs = config.timeoutMs ?? 60_000;
     this.defaultSignal = config.signal;
-    this.fetchImpl = wrapFetch(
-      config.fetch ?? globalThis.fetch.bind(globalThis),
-      config.onResponse,
-      this.baseUrl,
-    );
+    this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
     this.maxRetries = config.maxRetries ?? 3;
   }
 
@@ -332,7 +216,7 @@ export class HttpClient {
         return (await response.text()) as unknown as T;
       }
 
-      return response.json() as Promise<T>;
+      return attachRequestId((await response.json()) as T, response) as T;
     }
   }
 
@@ -430,7 +314,7 @@ export class HttpClient {
         return (await response.text()) as unknown as T;
       }
 
-      return response.json() as Promise<T>;
+      return attachRequestId((await response.json()) as T, response) as T;
     }
   }
 
@@ -529,6 +413,9 @@ export async function* parseJSONSSEStream<T>(
   const reader = response.body.getReader();
   const decoder = new TextDecoder("utf-8", { fatal: false });
   let remainder = "";
+  // Captured once, up front: the caller may abort mid-stream, and this is the
+  // id every error raised below falls back to.
+  const headerRequestId = response.headers.get("x-request-id") ?? undefined;
 
   try {
     while (true) {
@@ -537,7 +424,7 @@ export async function* parseJSONSSEStream<T>(
       if (done) {
         // Flush any remaining buffered data
         if (remainder.trim()) {
-          const chunk = tryParseJSONSSEFrame<T>(remainder, sseOpts);
+          const chunk = tryParseJSONSSEFrame<T>(remainder, sseOpts, headerRequestId);
           if (chunk !== null) yield chunk;
         }
         break;
@@ -562,11 +449,20 @@ export async function* parseJSONSSEStream<T>(
           return;
         }
 
-        const chunk = tryParseJSONSSEFrame<T>(frame, sseOpts);
+        const chunk = tryParseJSONSSEFrame<T>(frame, sseOpts, headerRequestId);
         if (chunk !== null) yield chunk;
       }
     }
   } finally {
+    // `releaseLock()` alone does NOT close the body: it detaches the reader and
+    // leaves the underlying HTTP response unread, so `break`-ing out of a
+    // `for await` (or bailing on a mid-stream error frame) held the socket open
+    // and left the provider generating into it. Cancel first, then release.
+    try {
+      await reader.cancel();
+    } catch {
+      // Already errored or closed — nothing to release the peer from.
+    }
     reader.releaseLock();
   }
 }
@@ -580,7 +476,11 @@ function tryParseSSEFrame(frame: string): ChatCompletionChunk | null {
   return tryParseJSONSSEFrame<ChatCompletionChunk>(frame);
 }
 
-function tryParseJSONSSEFrame<T>(frame: string, sseOpts?: SSEParseOptions): T | null {
+function tryParseJSONSSEFrame<T>(
+  frame: string,
+  sseOpts?: SSEParseOptions,
+  fallbackRequestId?: string,
+): T | null {
   const dataLines: string[] = [];
 
   for (const line of frame.split("\n")) {
@@ -607,8 +507,13 @@ function tryParseJSONSSEFrame<T>(frame: string, sseOpts?: SSEParseOptions): T | 
     // Mid-stream error frame: server sends {error: {code, message}} before [DONE]
     if ("error" in parsed && isRecord(parsed["error"])) {
       const err = parsed["error"];
-      const requestId =
-        typeof parsed["request_id"] === "string" ? parsed["request_id"] : "";
+      // The frame's own `request_id` wins, but older gateway versions omit it
+      // entirely — and by the time a mid-stream error arrives the response
+      // headers are the only other place the id survives. Without this fallback
+      // the single error a caller most needs to report is the one they cannot
+      // identify.
+      const fromFrame = typeof parsed["request_id"] === "string" ? parsed["request_id"] : "";
+      const requestId = fromFrame || fallbackRequestId || "";
       throw new MeshAPIApiError(0, {
         error: {
           code: typeof err["code"] === "string" ? err["code"] : "upstream_error",
@@ -647,10 +552,75 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 // ── Lazy SSE iterable helper ───────────────────────────────────────────────────
 
 /**
- * Returns a lazy `AsyncIterable<ChatCompletionChunk>` that only initiates the
- * streaming POST when the caller begins iterating. Shared by all resources that
- * stream SSE (chat/completions, responses, …) so the lazy-init machinery and
- * iterator protocol live in one place.
+ * An SSE stream, plus the id of the request that produced it.
+ *
+ * The streaming counterpart of {@link WithRequestId}: non-streaming calls carry
+ * the id on the returned object as `requestId`, and a stream carries it here.
+ * Either way it lives on what the call returned, so correlating a response to
+ * its call is structural — it holds with any number of requests in flight.
+ */
+export interface SSEStream<T> extends AsyncIterable<T> {
+  /**
+   * The `x-request-id` of the response backing this stream — quote it when
+   * contacting support.
+   *
+   * Resolves as soon as the response headers arrive, which is *before* the
+   * first chunk, so it is available for the whole life of the stream, including
+   * after an abort or a mid-stream failure.
+   *
+   * **Reading this starts the request** if iteration has not already started;
+   * the stream itself then reuses that same request rather than issuing a
+   * second one.
+   *
+   * `undefined` if the response carried no such header, or if the request
+   * failed before any response arrived. It never rejects — a failing request
+   * surfaces through iteration, and duplicating the rejection here would
+   * produce an unhandled rejection for callers who only wanted the id.
+   *
+   * @example
+   * ```ts
+   * const stream = client.chat.completions.create({ ...params, stream: true });
+   * logger.info({ requestId: await stream.requestId }, "stream started");
+   * for await (const chunk of stream) { ... }
+   * ```
+   */
+  readonly requestId: Promise<string | undefined>;
+
+  /**
+   * Abandon the stream and release the underlying HTTP connection.
+   *
+   * Only needed when you start a stream and then decide **not** to consume it —
+   * in practice, after reading {@link requestId} and bailing out. Reading that
+   * property issues the request, and an unread response body keeps the socket
+   * open and the provider generating into it until a timeout.
+   *
+   * Not needed for the normal paths: running a `for await` to completion,
+   * `break`ing out of one, or a mid-stream failure all release the connection
+   * on their own.
+   *
+   * Idempotent, never throws, and safe to call at any point — before the
+   * response arrives (the in-flight request is aborted), during iteration (the
+   * pending `next()` rejects with an abort error), or after completion (a
+   * no-op).
+   *
+   * Also wired to `Symbol.asyncDispose`, so `await using` handles it where the
+   * runtime supports explicit resource management.
+   *
+   * @example
+   * ```ts
+   * const stream = client.chat.completions.create({ ...params, stream: true });
+   * const requestId = await stream.requestId;
+   * if (!shouldProceed(requestId)) await stream.cancel();
+   * ```
+   */
+  cancel(): Promise<void>;
+}
+
+/**
+ * Returns a lazy `SSEStream<ChatCompletionChunk>` that only initiates the
+ * streaming POST when the caller begins iterating (or reads `requestId`).
+ * Shared by all resources that stream SSE (chat/completions, responses, …) so
+ * the lazy-init machinery and iterator protocol live in one place.
  */
 export function makeLazySSEIterable<T = ChatCompletionChunk>(
   http: HttpClient,
@@ -658,24 +628,87 @@ export function makeLazySSEIterable<T = ChatCompletionChunk>(
   params: unknown,
   opts?: RequestOptions,
   sseOpts?: SSEParseOptions,
-): AsyncIterable<T> {
+): SSEStream<T> {
+  // Memoised at the *iterable* level, not per-iterator: `requestId` and the
+  // iteration have to describe the same HTTP request, and a second
+  // [Symbol.asyncIterator]() must not silently issue — and bill for — a second
+  // upstream call.
+  let started: Promise<{ response: Response; iterator: AsyncIterator<T> }> | null = null;
+
+  // Lets `cancel()` abort a request that has not produced a response yet —
+  // reading `requestId` can return control to the caller before headers arrive.
+  // Merged with any caller-supplied signal rather than replacing it.
+  const controller = new AbortController();
+  const streamOpts: RequestOptions = {
+    ...opts,
+    signal: opts?.signal
+      ? AbortSignal.any([opts.signal, controller.signal])
+      : controller.signal,
+  };
+
+  let cancelled = false;
+
+  const start = (): Promise<{ response: Response; iterator: AsyncIterator<T> }> => {
+    if (!started) {
+      started = (async () => {
+        const response = await http.stream(path, params, streamOpts);
+        const gen = parseJSONSSEStream<T>(response, sseOpts);
+        return { response, iterator: gen[Symbol.asyncIterator]() };
+      })();
+    }
+    return started;
+  };
+
+  const cancel = async (): Promise<void> => {
+    if (cancelled) return;
+    cancelled = true;
+    controller.abort();
+    if (!started) return; // Never issued a request — nothing to release.
+    try {
+      const { response, iterator } = await started;
+      // If iteration had begun, closing the generator runs its `finally`, which
+      // cancels the reader and with it the body.
+      await iterator.return?.(undefined);
+      // If it had NOT begun, that call was a no-op: returning a generator
+      // suspended at its start never executes the body, so `finally` never
+      // runs and the response is still untouched. This is precisely the
+      // abandoned-after-reading-requestId case, so cancel the body directly.
+      // `locked` distinguishes the two — a started generator holds the reader.
+      if (response.body && !response.body.locked) {
+        await response.body.cancel();
+      }
+    } catch {
+      // The request itself failed, or the body is already gone. Either way
+      // there is no connection left to release.
+    }
+  };
+
   return {
+    get requestId(): Promise<string | undefined> {
+      return start().then(
+        ({ response }) => response.headers.get("x-request-id") ?? undefined,
+        () => undefined,
+      );
+    },
+
+    cancel,
+
+    // Explicit resource management (`await using`) where the runtime has it.
+    // Declared via computed key so this still compiles on targets whose lib
+    // does not define the symbol.
+    ...(typeof (Symbol as { asyncDispose?: symbol }).asyncDispose === "symbol"
+      ? { [(Symbol as unknown as { asyncDispose: symbol }).asyncDispose]: cancel }
+      : {}),
+
     [Symbol.asyncIterator](): AsyncIterator<T> {
       let iterator: AsyncIterator<T> | null = null;
 
-      const init = async (): Promise<AsyncIterator<T>> => {
-        const response = await http.stream(path, params, opts);
-        const gen = parseJSONSSEStream<T>(response, sseOpts);
-        return gen[Symbol.asyncIterator]();
-      };
-
       return {
         async next(): Promise<IteratorResult<T>> {
-          // `init()` is called at most once: `for await...of` — the only
-          // sensible consumer of an SSE stream — awaits each next() before
-          // issuing the next, so concurrent calls here are unreachable.
+          // `start()` is memoised, so this resolves to the same iterator every
+          // time — including when `requestId` kicked the request off first.
           if (!iterator) {
-            iterator = await init();
+            iterator = (await start()).iterator;
           }
           return iterator.next();
         },

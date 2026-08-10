@@ -1,6 +1,6 @@
 import { StructuredOutputError } from "../errors.js";
 import { makeLazySSEIterable } from "../http.js";
-import type { HttpClient } from "../http.js";
+import type { HttpClient, SSEStream } from "../http.js";
 import {
   buildResponseFormat,
   correctionPrompt,
@@ -69,17 +69,17 @@ export class ChatCompletionsResource {
   create(
     params: ChatCompletionParams & { stream: true },
     opts?: RequestOptions,
-  ): AsyncIterable<ChatCompletionChunk>;
+  ): SSEStream<ChatCompletionChunk>;
 
   create(
     params: ChatCompletionParams,
     opts?: RequestOptions,
-  ): Promise<ChatCompletionResponse> | AsyncIterable<ChatCompletionChunk>;
+  ): Promise<ChatCompletionResponse> | SSEStream<ChatCompletionChunk>;
 
   create(
     params: ChatCompletionParams,
     opts?: RequestOptions,
-  ): Promise<ChatCompletionResponse> | AsyncIterable<ChatCompletionChunk> {
+  ): Promise<ChatCompletionResponse> | SSEStream<ChatCompletionChunk> {
     if (params.stream === true) {
       return this.streamCreate(params, opts);
     }
@@ -89,7 +89,7 @@ export class ChatCompletionsResource {
   private streamCreate(
     params: ChatCompletionParams,
     opts?: RequestOptions,
-  ): AsyncIterable<ChatCompletionChunk> {
+  ): SSEStream<ChatCompletionChunk> {
     return makeLazySSEIterable(this.http, "/v1/chat/completions", params, opts);
   }
 

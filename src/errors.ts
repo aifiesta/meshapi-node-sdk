@@ -180,6 +180,13 @@ export class MeshAPIApiError extends Error {
             const fromHeader = parseRetryAfterSeconds(response);
             if (fromHeader !== undefined) body.error.retry_after_seconds = fromHeader;
           }
+          // Same reasoning as `retry_after_seconds`: prefer the envelope, but
+          // fall back to the header rather than surfacing an empty id. The two
+          // fallback branches below already do this — only the happy path,
+          // which is the one that runs for virtually every real error, did not.
+          if (!body.request_id) {
+            body.request_id = response.headers.get("x-request-id") ?? "";
+          }
           return new MeshAPIApiError(response.status, body as ApiErrorEnvelope);
         }
 

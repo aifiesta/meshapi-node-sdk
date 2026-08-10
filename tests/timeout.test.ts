@@ -116,8 +116,8 @@ describe("SSE gateway_timeout error frame", () => {
     );
     assert.equal(items.length, 0, "no chunks should be emitted before the error");
     assert.ok(error != null, "expected an error to be thrown");
-    const err = error as { code?: string; message?: string };
-    assert.equal(err.code, "gateway_timeout");
+    const err = error as { errorCode?: string; message?: string };
+    assert.equal(err.errorCode, "gateway_timeout");
   });
 
   it("yields partial content then raises gateway_timeout (customer scenario)", async () => {
@@ -137,8 +137,8 @@ describe("SSE gateway_timeout error frame", () => {
     assert.equal(items[1].choices[0].delta?.content, "world");
 
     assert.ok(error != null, "expected a gateway_timeout error after partial content");
-    const err = error as { code?: string };
-    assert.equal(err.code, "gateway_timeout");
+    const err = error as { errorCode?: string };
+    assert.equal(err.errorCode, "gateway_timeout");
   });
 
   it("raises immediately when timeout fires before any content", async () => {
@@ -148,7 +148,7 @@ describe("SSE gateway_timeout error frame", () => {
     );
     assert.equal(items.length, 0);
     assert.ok(error != null);
-    const err = error as { code?: string };
-    assert.equal(err.code, "gateway_timeout");
+    const err = error as { errorCode?: string };
+    assert.equal(err.errorCode, "gateway_timeout");
   });
 });

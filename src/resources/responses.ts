@@ -1,5 +1,5 @@
 import { makeLazySSEIterable } from "../http.js";
-import type { HttpClient } from "../http.js";
+import type { HttpClient, SSEStream } from "../http.js";
 import type {
   RequestOptions,
   ResponsesListParams,
@@ -59,17 +59,17 @@ export class ResponsesResource {
   create(
     params: ResponsesParams & { stream: true },
     opts?: RequestOptions,
-  ): AsyncIterable<ResponsesStreamEvent>;
+  ): SSEStream<ResponsesStreamEvent>;
 
   create(
     params: ResponsesParams,
     opts?: RequestOptions,
-  ): Promise<ResponsesResponse> | AsyncIterable<ResponsesStreamEvent>;
+  ): Promise<ResponsesResponse> | SSEStream<ResponsesStreamEvent>;
 
   create(
     params: ResponsesParams,
     opts?: RequestOptions,
-  ): Promise<ResponsesResponse> | AsyncIterable<ResponsesStreamEvent> {
+  ): Promise<ResponsesResponse> | SSEStream<ResponsesStreamEvent> {
     if (params.stream === true) {
       return this.streamCreate(params, opts);
     }
@@ -79,7 +79,7 @@ export class ResponsesResource {
   private streamCreate(
     params: ResponsesParams,
     opts?: RequestOptions,
-  ): AsyncIterable<ResponsesStreamEvent> {
+  ): SSEStream<ResponsesStreamEvent> {
     // `emitResponseEvents` is required here: the shared SSE parser skips frames
     // whose `type` starts with "response." so that chat callers only ever see
     // ChatCompletionChunks. The Responses API emits nothing else, so without

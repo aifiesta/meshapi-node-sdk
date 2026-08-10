@@ -60,39 +60,142 @@ const client = new MeshAPI({
   signal: controller.signal,         // optional global AbortSignal
   fetch: customFetch,                // optional fetch override
   maxRetries: 3,                     // default 3; 429/502/503/504 only
-  onResponse: (info) => {},          // optional per-response observability hook
 });
 ```
 
-### Request IDs and observability
+### Request IDs
 
-Every response carries an `x-request-id` header. On failures it is already on the
-error (`MeshAPIApiError.requestId`), but the `onResponse` hook surfaces it for
-**successful** responses too — so a slow-but-successful request can still be
-correlated with server-side logs.
+Every response carries an `x-request-id` header. The SDK surfaces it on the
+value each call returns, so a response can always be traced back to the call
+that made it — including with many requests in flight.
+
+**Non-streaming** — the id is on the returned object as `requestId`:
+
+```ts
+const completion = await client.chat.completions.create({
+  model: "openai/gpt-4o-mini",
+  messages: [{ role: "user", content: "Hello!" }],
+});
+
+logger.info({ requestId: completion.requestId }, "completion done");
+```
+
+It is **non-enumerable**, so it never shows up in `JSON.stringify`,
+`Object.keys` or object spread — code that serialises or deep-compares
+responses is unaffected. It is `undefined` if the response carried no header,
+and is not attached to array bodies (such as `models.list()`), which have
+nowhere to put it.
+
+**Streaming** — the id is on the returned stream as `requestId`, a promise that
+resolves as soon as response headers arrive, before the first chunk:
+
+```ts
+const stream = client.chat.completions.create({ model, messages, stream: true });
+
+logger.info({ requestId: await stream.requestId }, "stream started");
+
+for await (const chunk of stream) {
+  process.stdout.write(chunk.choices[0]?.delta.content ?? "");
+}
+```
+
+Because it lives on the stream object rather than on a shared callback, it stays
+correct with any number of concurrent streams:
+
+```ts
+await Promise.all(
+  [a, b, c].map(async (messages) => {
+    const stream = client.chat.completions.create({ model, messages, stream: true });
+    try {
+      for await (const chunk of stream) { /* ... */ }
+    } catch (err) {
+      // Still available after a mid-stream failure or an abort.
+      logger.error({ requestId: await stream.requestId }, "stream failed");
+    }
+  }),
+);
+```
+
+Available on every streaming surface: `chat.completions.create({ stream: true })`,
+`responses.create({ stream: true })`, `images.stream()` and
+`compare.create({ stream: true })`. Reading it starts the request if iteration
+has not already begun; the stream then reuses that same request. It resolves to
+`undefined` — never rejects — if the response carried no header or the request
+failed outright, since the failure itself surfaces through iteration.
+
+**On errors** — `MeshAPIApiError.requestId` carries the same id, for both
+streaming and non-streaming failures:
+
+```ts
+try {
+  await client.chat.completions.create({ model, messages });
+} catch (err) {
+  if (err instanceof MeshAPIApiError) {
+    console.error(err.status, err.errorCode, err.requestId);
+  }
+}
+```
+
+#### Abandoning a stream
+
+If you read `requestId` and then decide **not** to consume the stream, call
+`cancel()` — reading the property issues the request, and an unread response
+body keeps the connection open with the provider still generating into it:
+
+```ts
+const stream = client.chat.completions.create({ model, messages, stream: true });
+
+const requestId = await stream.requestId;
+if (!shouldProceed(requestId)) {
+  await stream.cancel();
+  return;
+}
+
+for await (const chunk of stream) { ... }
+```
+
+`cancel()` is idempotent and never throws. Where the runtime supports explicit
+resource management it is also wired to `Symbol.asyncDispose`, so
+`await using stream = ...` cleans up for you.
+
+You do **not** need it on the normal paths — running a loop to completion,
+`break`ing out of one, or a mid-stream failure all release the connection
+themselves.
+
+#### Logging every request
+
+There is no built-in response hook. For request-level logging, metrics or
+tracing across all calls, wrap `fetch` — it sees every request the client makes
+and composes with anything else you already use:
 
 ```ts
 const client = new MeshAPI({
   baseUrl: "https://api.meshapi.ai",
   token: process.env.MESHAPI_API_KEY!,
-  onResponse: ({ requestId, status, method, url, durationMs }) => {
-    logger.info({ requestId, status, method, url, durationMs }, "meshapi request");
+  fetch: async (input, init) => {
+    const startedAt = Date.now();
+    const response = await fetch(input, init);
+    logger.info(
+      {
+        requestId: response.headers.get("x-request-id"),
+        status: response.status,
+        durationMs: Date.now() - startedAt,
+      },
+      "meshapi request",
+    );
+    return response;
   },
 });
 ```
 
-The hook fires once per HTTP response, for every request the client makes:
-
-- Streaming **and** non-streaming requests. For streams it fires as soon as
-  response headers arrive, so `durationMs` is time-to-first-byte rather than the
-  duration of the whole stream.
-- Successful **and** failed responses, including each individual attempt when a
-  request is retried.
-- `requestId` is `undefined` when a response carries no `x-request-id` — notably
-  the third-party signed-URL upload performed by `rag.uploadFile()`.
-
-Exceptions thrown inside the hook are swallowed, so a logging failure can never
-break the request it is observing.
+> **Removed in 2.0.0.** The `onResponse` config hook existed only to expose this
+> request id on successful responses. Now that the id is on the returned value
+> — where it can actually be correlated to a specific call — the hook was
+> redundant, and it could never answer "which of these concurrent requests was
+> that?". Replace it with `requestId` / `stream.requestId`, or with the `fetch`
+> wrapper above if you were using it for general logging. Note that a custom
+> `fetch` sees the raw URL, including the signed-upload query string used by
+> `rag.uploadFile()` — strip it before logging if that matters to you.
 
 ## Chat completions
 
@@ -628,7 +731,7 @@ Retries on 429/502/503/504 with exponential backoff (default 3 retries, 500 ms b
 
 ```ts
 import type {
-  MeshAPIConfig, ResponseInfo,
+  MeshAPIConfig, SSEStream, WithRequestId,
   // chat
   ChatCompletionParams, ChatCompletionResponse, ChatCompletionChunk,
   ChatMessage, Tool, ToolCall,
