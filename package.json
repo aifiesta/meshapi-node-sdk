@@ -27,6 +27,7 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.test.json",
     "test": "node --import tsx/esm --test \"tests/**/*.test.ts\"",
     "test:unit": "node --import tsx/esm --test \"tests/**/*.test.ts\"",
     "prepublishOnly": "npm run build"
