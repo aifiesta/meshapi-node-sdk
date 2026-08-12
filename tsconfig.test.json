@@ -1,0 +1,22 @@
+// Type-checks the tests as well as src.
+//
+// The base tsconfig deliberately scopes `include` to `src` — it drives the build, and
+// `rootDir: src` plus `declaration` would emit test files into dist. The consequence
+// was that nothing type-checked `tests/`, which matters more here than usual:
+// `tests/contract.test.ts` exists to verify that the SDK's TYPES match the API's
+// response shapes, and `tsx` strips types without checking them. So the contract
+// tests could assert a shape the types did not actually describe, and pass.
+//
+// Found in MESH-508 while adding a pricing-shape test that should not have compiled.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Not emitting, so no rootDir constraint — and declaration/sourceMap are moot.
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src", "tests"]
+}

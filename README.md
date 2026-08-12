@@ -60,8 +60,41 @@ const client = new MeshAPI({
   signal: controller.signal,         // optional global AbortSignal
   fetch: customFetch,                // optional fetch override
   maxRetries: 3,                     // default 3; 429/502/503/504 only
+  apiVersion: "2026-08",             // default MESH_API_VERSION; null to opt out
 });
 ```
+
+### API version
+
+MeshAPI versions its contract by date. This release targets **`2026-08`** and sends
+it as `X-Mesh-Version` on every request:
+
+```ts
+import { MeshAPI, MESH_API_VERSION } from "meshapi-node-sdk";
+
+MESH_API_VERSION; // "2026-08" — the contract this release was built to parse
+
+// Pin a newer version, if you have migrated ahead of this SDK release:
+new MeshAPI({ baseUrl, token, apiVersion: "2026-09" });
+
+// Send no header at all and take the gateway's baseline, whatever it becomes:
+new MeshAPI({ baseUrl, token, apiVersion: null });
+```
+
+`undefined` and `null` mean different things: leaving `apiVersion` unset uses this
+SDK's version, `null` is an explicit opt-out.
+
+**Why pin.** An unpinned client is served whatever the gateway defaults to, so it
+never states which response shape it can parse. That is safe today only because the
+baseline is the *oldest* supported version and so never moves on its own. Pinning
+makes it a contract instead of a coincidence.
+
+The gateway rejects a version it does not serve with `400 invalid_api_version`
+rather than falling back, so a typo cannot leave you believing you are pinned when
+you are not. `GET /v1/api-versions` lists what a deployment serves.
+
+Not sent on the realtime WebSocket handshake — the gateway's versioning applies to
+HTTP requests only, and realtime negotiates its version separately.
 
 ### Request IDs
 

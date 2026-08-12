@@ -232,16 +232,42 @@ export interface ChatCompletionChunk {
 // ── Models ────────────────────────────────────────────────────────────────────
 
 export interface ModelPricing {
-  /** Price per 1,000 prompt tokens in USD (as decimal string) */
-  prompt_usd_per_1k: string | null;
-  /** Price per 1,000 completion tokens in USD (as decimal string) */
-  completion_usd_per_1k: string | null;
+  /**
+   * @deprecated Retired on the wire. The gateway stopped returning this in
+   * `v1.0.135` and has no reference to it left, so it is never present. Use
+   * {@link ModelPricing.prompt_usd_per_1m} or
+   * {@link ModelPricing.input_usd_per_unit}.
+   *
+   * Kept declared, and now optional: typing it as required asserted a field is
+   * always present when it never is. Deleting it outright would break callers that
+   * still read it, which is a worse outcome than `undefined`.
+   */
+  prompt_usd_per_1k?: string | null;
+  /**
+   * @deprecated Retired on the wire — see {@link ModelPricing.prompt_usd_per_1k}.
+   * Use {@link ModelPricing.completion_usd_per_1m} or
+   * {@link ModelPricing.output_usd_per_unit}.
+   */
+  completion_usd_per_1k?: string | null;
   /** Discount percentage applied to this caller (as decimal string) */
   discount_pct?: string | null;
   // All remaining pricing fields are optional strings per spec ModelPricing
+  /** The unit the per-unit rates below are quoted in, e.g. `per_1m_tokens`, `per_second`. */
   pricing_unit?: string | null;
   prompt_usd_per_1m?: string | null;
   completion_usd_per_1m?: string | null;
+  /**
+   * The raw rate in this row's own {@link ModelPricing.pricing_unit}.
+   *
+   * For token-priced rows this equals {@link ModelPricing.prompt_usd_per_1m}. For
+   * everything else — per-second video, per-image, per-1k-chars, per-hour — the
+   * per-1M fields are null **by design**, and this is the ONLY place the price
+   * exists. Read it together with `pricing_unit`, which is what makes the bare
+   * number a price.
+   */
+  input_usd_per_unit?: string | null;
+  /** Output side of {@link ModelPricing.input_usd_per_unit}. */
+  output_usd_per_unit?: string | null;
   image_output_usd_per_image?: string | null;
   request_usd?: string | null;
   long_context_input_usd_per_1m?: string | null;
