@@ -49,6 +49,12 @@ jobs:
       - name: Build SDK
         run: npm ci && npm run build
 
+      # `tsx` strips types without checking them, so the unit tests below pass
+      # regardless of whether the SDK's types are correct. Nothing was running
+      # `tsc` in CI, which for a types-first SDK is the check that matters most.
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Run unit tests
         run: npm run test:unit
 
@@ -57,7 +63,9 @@ jobs:
         run: npm install
 
       # Gating where safe (MESH-368): PRs and pushes run the cheap SMOKE subset
-      # (models list, one chat, embeddings/responses, one stream, 401/404) so
+      # (models list, one chat, embeddings/responses, one stream, 401/404, and the
+      # API-version pin — a stale pin 400s every single request, so it is the
+      # cheapest test with the widest blast radius) so
       # they gate reliably green — the full suite includes slow/flaky calls
       # (image generation, realtime WebSocket) that intermittently exceed
       # provider latency and shouldn't block unrelated PRs. The FULL suite

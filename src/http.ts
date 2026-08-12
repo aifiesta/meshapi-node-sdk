@@ -44,6 +44,25 @@ export interface MeshAPIConfig {
    */
   maxRetries?: number;
 
+  /**
+   * Dated MeshAPI contract version, sent as `X-Mesh-Version`.
+   *
+   * Defaults to {@link MESH_API_VERSION} — the version this SDK release was built
+   * against. Set it to pin a different one (e.g. if you have migrated ahead of this
+   * release), or to `null` to send no header at all and be served the gateway's
+   * baseline, whatever it may become.
+   *
+   * `undefined` and `null` mean different things on purpose: unset takes the SDK's
+   * version, `null` is an explicit opt-out.
+   *
+   * The gateway rejects a version it does not serve with `400 invalid_api_version`
+   * rather than falling back, so a typo cannot leave you believing you are pinned
+   * when you are not.
+   *
+   * @default MESH_API_VERSION
+   */
+  apiVersion?: string | null;
+
 }
 
 /**
@@ -104,6 +123,22 @@ const BACKOFF_MAX_MS = 30_000;
 export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
 export const SDK_VERSION_VALUE = "node/2.0.0";
 
+/**
+ * The dated MeshAPI contract version this SDK release was built against.
+ *
+ * Unlike {@link SDK_VERSION_VALUE} this is NOT tied to the package version — it
+ * changes only when this SDK is updated to parse a newer response shape, which is
+ * rarer than a release. Bump it together with whatever type changes that entails,
+ * and note it in CHANGELOG.md so a caller can see which contract a release targets.
+ *
+ * Deliberately not sent on the realtime WebSocket handshake: the gateway's
+ * versioning middleware skips non-HTTP ASGI scopes outright, so a pin there would be
+ * a header nobody reads. The realtime handshake negotiates its own version
+ * separately (MESH-501).
+ */
+export const MESH_API_VERSION = "2026-08";
+export const API_VERSION_HEADER = "X-Mesh-Version";
+
 // ── HTTP client ───────────────────────────────────────────────────────────────
 
 export class HttpClient {
@@ -113,6 +148,8 @@ export class HttpClient {
   private readonly defaultSignal: AbortSignal | undefined;
   private readonly fetchImpl: typeof fetch;
   private readonly maxRetries: number;
+  /** `null` means send no version header — see {@link MeshAPIConfig.apiVersion}. */
+  private readonly apiVersion: string | null;
 
   constructor(config: MeshAPIConfig) {
     this.baseUrl = config.baseUrl.replace(/\/$/, "");
@@ -121,6 +158,18 @@ export class HttpClient {
     this.defaultSignal = config.signal;
     this.fetchImpl = config.fetch ?? globalThis.fetch.bind(globalThis);
     this.maxRetries = config.maxRetries ?? 3;
+    // Checked against `undefined` rather than with `??`, because an explicit null
+    // has to survive as null: it is the opt-out, and only an ABSENT field falls
+    // through to the SDK's own version.
+    this.apiVersion = config.apiVersion === undefined ? MESH_API_VERSION : config.apiVersion;
+  }
+
+  /**
+   * The version header, or nothing when the caller opted out. Spread into a header
+   * object so both builders below stay one expression.
+   */
+  private versionHeader(): Record<string, string> {
+    return this.apiVersion === null ? {} : { [API_VERSION_HEADER]: this.apiVersion };
   }
 
   /**
@@ -184,6 +233,7 @@ export class HttpClient {
       Authorization: `Bearer ${this.token}`,
       Accept: "application/json",
       [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
+      ...this.versionHeader(),
       // Do NOT set Content-Type — fetch sets it automatically with the multipart boundary
     };
 
@@ -258,6 +308,7 @@ export class HttpClient {
       "Content-Type": "application/json",
       "Accept": "application/json",
       [SDK_VERSION_HEADER]: SDK_VERSION_VALUE,
+      ...this.versionHeader(),
     };
   }
 

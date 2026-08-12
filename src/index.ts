@@ -156,6 +156,7 @@ export class MeshAPI {
 // ── Re-exports ────────────────────────────────────────────────────────────────
 
 export { MeshAPIApiError, StructuredOutputError } from "./errors.js";
+export { MESH_API_VERSION } from "./http.js";
 export type { MeshAPIConfig, SSEStream, WithRequestId } from "./http.js";
 export type {
   StandardSchemaV1,
