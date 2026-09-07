@@ -5,7 +5,7 @@ import { BASE_URL, TOKEN } from "./config.js";
 
 const client = new MeshAPI({ baseUrl: BASE_URL, token: TOKEN });
 
-const TTS_MODEL = process.env.MESHAPI_TTS_MODEL ?? "sarvam/bulbul:v2";
+const TTS_MODEL = process.env.MESHAPI_TTS_MODEL ?? "sarvam/bulbul:v3";
 const STT_MODEL = process.env.MESHAPI_STT_MODEL ?? "sarvam/saaras:v3";
 
 describe("audio", () => {
