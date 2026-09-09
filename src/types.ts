@@ -142,7 +142,7 @@ export interface ChatCompletionParams {
   tool_choice?: ToolChoice;
   response_format?: Record<string, unknown>;
 
-  // OpenRouter extensions
+  // Routing extensions
   /** Context compression transforms (e.g. ["middle-out"]) */
   transforms?: string[];
   /** Ordered fallback model list if primary model is unavailable */
