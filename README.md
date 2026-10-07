@@ -422,8 +422,9 @@ import { readFileSync, writeFileSync } from "fs";
 // Text-to-speech — returns Uint8Array of raw audio bytes
 const audio = await client.audio.synthesize({
   input: "Hello from MeshAPI.",
-  model: "sarvam/bulbul:v2",
-  voice: "meera",
+  model: "sarvam/bulbul:v3",
+  // Sarvam models take their voice in `speaker`; `voice` is for other providers (e.g. ElevenLabs).
+  speaker: "ritu",
 });
 writeFileSync("output.wav", Buffer.from(audio));
 
