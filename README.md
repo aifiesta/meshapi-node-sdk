@@ -56,7 +56,7 @@ Get a key at [meshapi.ai](https://meshapi.ai). Data-plane keys are prefixed `rsk
 const client = new MeshAPI({
   baseUrl: "https://api.meshapi.ai", // required
   token: "rsk_...",                  // required
-  timeoutMs: 60_000,                 // default 60 s
+  timeoutMs: 60_000,                 // default 60 s; for streams, only until response headers
   signal: controller.signal,         // optional global AbortSignal
   fetch: customFetch,                // optional fetch override
   maxRetries: 3,                     // default 3; 429/502/503/504 only

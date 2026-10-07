@@ -21,7 +21,7 @@ export interface MeshAPIConfig {
 
   /**
    * Default request timeout in milliseconds.
-   * For streaming requests, this applies to the initial connection only (TTFB).
+   * For streaming requests, this bounds only the wait for response headers (TTFB).
    * @default 60_000
    */
   timeoutMs?: number;
@@ -272,32 +272,42 @@ export class HttpClient {
 
   /**
    * Initiate a streaming request and return the raw Response.
-   * The timeout signal here covers only the initial connection (TTFB);
-   * once the stream starts, it is the caller's responsibility to cancel via AbortSignal.
+   * The timeout covers only the wait for response headers (TTFB); once the
+   * stream starts, it is the caller's responsibility to cancel via AbortSignal.
    */
   async stream(path: string, body: unknown, opts?: RequestOptions): Promise<Response> {
     const timeoutMs = opts?.timeoutMs ?? this.defaultTimeoutMs;
-    const connectSignal = AbortSignal.timeout(timeoutMs);
-
-    // Merge user signal + TTFB timeout signal
-    const signals: AbortSignal[] = [connectSignal];
+    const ttfb = new AbortController();
+    const signals: AbortSignal[] = [ttfb.signal];
     if (opts?.signal) signals.push(opts.signal);
     if (this.defaultSignal) signals.push(this.defaultSignal);
 
-    const signal = signals.length === 1 ? signals[0] ?? connectSignal : AbortSignal.any(signals);
+    const signal = signals.length === 1 ? ttfb.signal : AbortSignal.any(signals);
 
-    const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(body),
-      signal,
-    });
+    // Not AbortSignal.timeout(): fetch keeps its signal attached to the body, so
+    // that timer would abort a healthy stream mid-generation. This one stops once
+    // a 2xx's headers arrive; an error body is still read under it.
+    const timer = Number.isFinite(timeoutMs)
+      ? setTimeout(
+          () => ttfb.abort(new DOMException("The operation was aborted due to timeout", "TimeoutError")),
+          timeoutMs,
+        )
+      : undefined;
 
-    if (!response.ok) {
-      throw await MeshAPIApiError.fromResponse(response);
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
+        method: "POST",
+        headers: this.buildHeaders(),
+        body: JSON.stringify(body),
+        signal,
+      });
+      if (!response.ok) {
+        throw await MeshAPIApiError.fromResponse(response);
+      }
+      return response;
+    } finally {
+      clearTimeout(timer);
     }
-
-    return response;
   }
 
   // ── Private ─────────────────────────────────────────────────────────────────

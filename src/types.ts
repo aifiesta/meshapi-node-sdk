@@ -8,7 +8,7 @@
 export interface RequestOptions {
   /** Per-request AbortSignal to cancel the request. */
   signal?: AbortSignal;
-  /** Per-request timeout override in milliseconds. Ignored for streaming. */
+  /** Per-request timeout override in milliseconds. For streaming, bounds only the wait for response headers. */
   timeoutMs?: number;
 }
 

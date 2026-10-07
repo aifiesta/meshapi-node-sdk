@@ -5,6 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { parseJSONSSEStream } from "../src/http.js";
+import { MeshAPI, MeshAPIApiError } from "../src/index.js";
 import type { ChatCompletionChunk, ChatCompletionParams, ResponsesParams } from "../src/index.js";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -150,5 +151,122 @@ describe("SSE gateway_timeout error frame", () => {
     assert.ok(error != null);
     const err = error as { errorCode?: string };
     assert.equal(err.errorCode, "gateway_timeout");
+  });
+});
+
+// ── Client timeoutMs on streams: TTFB only ───────────────────────────────────
+
+// Mirrors real fetch: an abort rejects the pending call before headers, and
+// errors the body after them.
+function slowStreamFetch(frames: number, intervalMs: number): typeof fetch {
+  return async (_url, init) => {
+    const signal = init?.signal as AbortSignal;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        let i = 0;
+        timer = setInterval(() => {
+          if (i < frames) {
+            c.enqueue(new TextEncoder().encode(chunkFrame(`t${i++} `)));
+          } else {
+            clearInterval(timer);
+            c.enqueue(new TextEncoder().encode("data: [DONE]\n\n"));
+            c.close();
+          }
+        }, intervalMs);
+        signal.addEventListener("abort", () => {
+          clearInterval(timer);
+          c.error(signal.reason);
+        });
+      },
+      cancel() {
+        clearInterval(timer);
+      },
+    });
+    return new Response(body, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+}
+
+function neverRespondingFetch(): typeof fetch {
+  return (_url, init) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal as AbortSignal;
+      signal.addEventListener("abort", () => reject(signal.reason));
+    });
+}
+
+function stalledErrorBodyFetch(): typeof fetch {
+  return async (_url, init) => {
+    const signal = init?.signal as AbortSignal;
+    const body = new ReadableStream<Uint8Array>({
+      start(c) {
+        c.enqueue(new TextEncoder().encode('{"error":'));
+        signal.addEventListener("abort", () => c.error(signal.reason));
+      },
+    });
+    return new Response(body, { status: 500, headers: { "content-type": "application/json" } });
+  };
+}
+
+describe("client timeoutMs on streaming requests", () => {
+  const params = {
+    model: "m",
+    messages: [{ role: "user" as const, content: "hi" }],
+    stream: true as const,
+  };
+
+  it("does not abort a stream that outlives timeoutMs once headers have arrived", async () => {
+    // timeoutMs bounds the wait for headers, never a stream that is still sending.
+    const client = new MeshAPI({
+      baseUrl: "https://api.meshapi.test",
+      token: "rsk_test",
+      timeoutMs: 50,
+      fetch: slowStreamFetch(10, 20),
+    });
+    const chunks = await collect(client.chat.completions.create(params));
+    assert.equal(chunks.length, 10);
+  });
+
+  it("still times out when response headers never arrive", async () => {
+    const client = new MeshAPI({
+      baseUrl: "https://api.meshapi.test",
+      token: "rsk_test",
+      timeoutMs: 50,
+      fetch: neverRespondingFetch(),
+    });
+    const { items, error } = await collectExpectingError(client.chat.completions.create(params));
+    assert.equal(items.length, 0);
+    assert.equal((error as { name?: string })?.name, "TimeoutError");
+  });
+
+  it("still times out reading an error body that stalls", async () => {
+    const client = new MeshAPI({
+      baseUrl: "https://api.meshapi.test",
+      token: "rsk_test",
+      timeoutMs: 50,
+      maxRetries: 0,
+      fetch: stalledErrorBodyFetch(),
+    });
+    const started = Date.now();
+    const { error } = await collectExpectingError(client.chat.completions.create(params));
+    assert.ok(error instanceof MeshAPIApiError);
+    assert.equal(error.status, 500);
+    assert.ok(Date.now() - started < 1_000, "the error body read must stay under timeoutMs");
+  });
+
+  it("a caller signal still aborts mid-stream", async () => {
+    const controller = new AbortController();
+    const client = new MeshAPI({
+      baseUrl: "https://api.meshapi.test",
+      token: "rsk_test",
+      timeoutMs: 1_000,
+      fetch: slowStreamFetch(50, 10),
+    });
+    setTimeout(() => controller.abort(), 60);
+    const { items, error } = await collectExpectingError(
+      client.chat.completions.create(params, { signal: controller.signal }),
+    );
+    assert.ok(items.length > 0 && items.length < 50, `got ${items.length} chunks`);
+    assert.ok(error != null, "expected the caller's abort to surface");
   });
 });
