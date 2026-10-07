@@ -121,7 +121,7 @@ const BACKOFF_MAX_MS = 30_000;
  * value.
  */
 export const SDK_VERSION_HEADER = "X-MeshAPI-SDK";
-export const SDK_VERSION_VALUE = "node/2.0.0";
+export const SDK_VERSION_VALUE = "node/2.0.1";
 
 /**
  * The dated MeshAPI contract version this SDK release was built against.
