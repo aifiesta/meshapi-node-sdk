@@ -685,14 +685,42 @@ if (res.results[0]?.flagged) console.log(res.results[0].categories);
 
 ## Web search
 
-Gated server-side by `WEB_SEARCH_ENABLED`. Native-first with Tavily fallback —
-inspect `res.provider` to see which engine served the request.
+Gated server-side by `WEB_SEARCH_ENABLED`. The native engine is tried first and
+failover is automatic — inspect `res.provider` to see which engine served the
+request. Pinning `provider` turns failover off.
 
 ```ts
 const res = await client.web.search({ query: "latest Mars rover news", max_results: 5, include_answer: true });
 console.log(res.provider, res.answer);
 for (const hit of res.results) console.log(hit.title, hit.url);
 ```
+
+### Page content
+
+`include_page_content` returns each result's extracted page text, so one call
+replaces search-then-fetch:
+
+```ts
+const res = await client.web.search({
+  query: "latest Mars rover news",
+  provider: "tinyfish",      // the only engine that returns page text
+  include_page_content: true,
+  max_results: 2,
+});
+for (const hit of res.results) {
+  if (hit.page_content) console.log(hit.url, hit.page_content.length, hit.page_content_truncated);
+}
+```
+
+Three things worth knowing before you turn it on:
+
+- **Pin `provider: "tinyfish"`.** No other engine returns page text, and native is
+  tried first, so an unpinned request usually comes back with none.
+- **It costs nothing extra but it is slow and large.** The flat per-search fee is
+  unchanged; expect seconds rather than under one, and tens of kilobytes per result.
+- **`page_content` is `null` per result, not per request.** A page that cannot be
+  read yields no text for that one result instead of failing the search, and
+  `page_content_truncated` tells you when text was cut at the server's ceiling.
 
 ## Router select
 
