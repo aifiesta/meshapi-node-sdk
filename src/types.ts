@@ -1193,27 +1193,52 @@ export interface ModerationResponse {
 export interface WebSearchParams {
   query: string;
   model?: string;
-  provider?: "native" | "tavily";
+  provider?: "native" | "tavily" | "tinyfish";
   max_results?: number;
   search_depth?: "basic" | "advanced";
   include_domains?: string[];
   exclude_domains?: string[];
   include_answer?: boolean;
+  /**
+   * Also return each result's extracted page text in `page_content`.
+   *
+   * Honoured by the `tinyfish` engine only, and the native engine is tried
+   * first, so pin `provider: "tinyfish"` or expect no page text at all.
+   * Costs nothing extra, but the search takes seconds rather than under one
+   * and returns tens of kilobytes per result.
+   */
+  include_page_content?: boolean;
 }
 
 export interface WebSearchResultItem {
   title: string;
   url: string;
+  /** The short snippet. Page text never replaces it — see `page_content`. */
   content?: string;
   score?: number | null;
   published_date?: string | null;
+  /**
+   * The result's extracted PAGE text, as opposed to the `content` snippet.
+   *
+   * `null` is normal, not an error: the key arrives on every response from
+   * every engine, and carries text only when the request asked for page
+   * content AND the serving engine produced some. A `tinyfish` result whose
+   * page could not be read is also `null`, per result, without failing the
+   * search — so check it per result.
+   */
+  page_content?: string | null;
+  /**
+   * True when `page_content` was cut at the server's per-result ceiling.
+   * Check it before treating the text as a whole page.
+   */
+  page_content_truncated?: boolean;
 }
 
 export interface WebSearchResponse {
   query: string;
   answer?: string | null;
   results: WebSearchResultItem[];
-  /** "native" | "tavily" today; typed as string so a new engine cannot break parsing. */
+  /** "native" | "tavily" | "tinyfish" today; typed as string so a new engine cannot break parsing. */
   provider: string;
   request_id?: string;
 }
