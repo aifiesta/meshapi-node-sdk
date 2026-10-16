@@ -102,17 +102,18 @@ describe("api version", () => {
     assert.equal(body.error.code, "invalid_api_version");
   });
 
-  it("an unpinned request is served the baseline", async t => {
-    // No header means the gateway's baseline, and it says which one it used. This is
-    // what `apiVersion: null` opts into.
+  it("an unpinned request is served a supported default", async t => {
+    // No header → the account's default version: the org's default_api_version copied
+    // onto the key at mint (LATEST by provisioning default), else the gateway BASELINE.
+    // Account-dependent, so assert the echo is a served version, not the global baseline.
     const versions = await servedVersions();
     if (versions === null) return t.skip("endpoint not deployed");
 
-    const baseline = versions.find(v => v.baseline)?.label;
-    assert.ok(baseline, "the gateway must mark exactly one version as the baseline");
+    const served = new Set(versions.map(v => v.label));
+    assert.ok(served.size > 0, "the gateway must serve at least one version");
 
     const response = await fetch(`${BASE_URL}/v1/models`, { headers: auth });
     assert.ok(response.ok, `GET /v1/models → ${response.status}`);
-    assert.equal(echoed(response), baseline);
+    assert.ok(served.has(echoed(response)), `unpinned echo ${echoed(response)} is not a served version`);
   });
 });

@@ -4,6 +4,9 @@
 
 ### Added
 
+- Contract drift gate: CI (`contract-check`) compares the SDK's typed surface, dumped by
+  `scripts/dump-surface.ts`, with the committed `contract/openapi.public.json` snapshot.
+  New drift fails the job; the known gap is listed in `contract-baseline.json`.
 - `WebSearchParams.include_page_content` returns each result's extracted page text
   in the new `WebSearchResultItem.page_content`, so one call replaces
   search-then-fetch. `page_content_truncated` says when that text was cut at the
