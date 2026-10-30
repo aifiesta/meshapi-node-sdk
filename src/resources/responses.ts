@@ -9,6 +9,27 @@ import type {
   ResponsesStreamEvent,
 } from "../types.js";
 
+// ---------------------------------------------------------------------------
+// Responses input token counting (POST /v1/responses/input_tokens)
+// ---------------------------------------------------------------------------
+
+/**
+ * Request body for `POST /v1/responses/input_tokens`.
+ *
+ * Takes the same body as `POST /v1/responses`. Streaming is not applicable to
+ * a count request, so `stream` is omitted.
+ */
+export type ResponsesInputTokensParams = Omit<ResponsesParams, "stream">;
+
+/** Response body for `POST /v1/responses/input_tokens`. */
+export interface ResponsesInputTokensResponse {
+  /** Object type, e.g. `"response.input_tokens"`. */
+  object?: string;
+  /** Number of input tokens the request would consume. */
+  input_tokens: number;
+  [key: string]: unknown;
+}
+
 export class ResponsesResource {
   constructor(private readonly http: HttpClient) {}
 
@@ -90,6 +111,37 @@ export class ResponsesResource {
       params,
       opts,
       { emitResponseEvents: true },
+    );
+  }
+
+  /**
+   * Count the input tokens a Responses request would use, without running
+   * inference.
+   *
+   * Auth: API key (`rsk_...`)
+   *
+   * The request is not billed and does not create a usage record. The count is
+   * exact when the upstream provider offers a native counter, otherwise it is
+   * an estimate.
+   *
+   * @example
+   * ```ts
+   * const { input_tokens } = await client.responses.inputTokens({
+   *   model: "openai/o4-mini",
+   *   input: "Explain the halting problem simply.",
+   * });
+   * console.log(input_tokens);
+   * ```
+   */
+  inputTokens(
+    params: ResponsesInputTokensParams,
+    opts?: RequestOptions,
+  ): Promise<ResponsesInputTokensResponse> {
+    const { stream: _stream, ...body } = params as ResponsesParams;
+    return this.http.post<ResponsesInputTokensResponse>(
+      "/v1/responses/input_tokens",
+      body,
+      opts,
     );
   }
 
