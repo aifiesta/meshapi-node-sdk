@@ -9,6 +9,27 @@ import type {
   ResponsesStreamEvent,
 } from "../types.js";
 
+// ---------------------------------------------------------------------------
+// Responses input token counting (POST /v1/responses/input_tokens)
+// ---------------------------------------------------------------------------
+
+/**
+ * Body for `POST /v1/responses/input_tokens`.
+ *
+ * Takes the same shape as a `/v1/responses` request. `stream` is not
+ * accepted because no inference runs.
+ */
+export type ResponsesInputTokensParams = Omit<ResponsesParams, "stream">;
+
+/** Result of `POST /v1/responses/input_tokens`. */
+export interface ResponsesInputTokensResponse {
+  /** Object type, `"response.input_tokens"`. */
+  object?: string;
+  /** Number of input tokens the request would consume. */
+  input_tokens: number;
+  [key: string]: unknown;
+}
+
 export class ResponsesResource {
   constructor(private readonly http: HttpClient) {}
 
@@ -90,6 +111,36 @@ export class ResponsesResource {
       params,
       opts,
       { emitResponseEvents: true },
+    );
+  }
+
+  /**
+   * Count the input tokens a Responses request would use, without running it.
+   *
+   * Auth: API key (`rsk_...`)
+   *
+   * No inference runs and nothing is billed. Pass the same body you would
+   * send to `create`; any `stream` flag is dropped before sending.
+   *
+   * @example
+   * ```ts
+   * const { input_tokens } = await client.responses.inputTokens({
+   *   model: "openai/o4-mini",
+   *   input: "Explain the halting problem simply.",
+   * });
+   * console.log(input_tokens);
+   * ```
+   */
+  inputTokens(
+    params: ResponsesInputTokensParams,
+    opts?: RequestOptions,
+  ): Promise<ResponsesInputTokensResponse> {
+    const { stream: _stream, ...body } = params as ResponsesParams;
+    void _stream;
+    return this.http.post<ResponsesInputTokensResponse>(
+      "/v1/responses/input_tokens",
+      body,
+      opts,
     );
   }
 
