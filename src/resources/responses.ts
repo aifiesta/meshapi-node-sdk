@@ -14,16 +14,16 @@ import type {
 // ---------------------------------------------------------------------------
 
 /**
- * Request body for `POST /v1/responses/input_tokens`.
+ * Body for `POST /v1/responses/input_tokens`.
  *
- * Takes the same body as `POST /v1/responses`. Streaming is not applicable to
- * a count request, so `stream` is omitted.
+ * Takes the same shape as a `/v1/responses` request. `stream` is not
+ * accepted because no inference runs.
  */
 export type ResponsesInputTokensParams = Omit<ResponsesParams, "stream">;
 
-/** Response body for `POST /v1/responses/input_tokens`. */
+/** Result of `POST /v1/responses/input_tokens`. */
 export interface ResponsesInputTokensResponse {
-  /** Object type, e.g. `"response.input_tokens"`. */
+  /** Object type, `"response.input_tokens"`. */
   object?: string;
   /** Number of input tokens the request would consume. */
   input_tokens: number;
@@ -115,14 +115,12 @@ export class ResponsesResource {
   }
 
   /**
-   * Count the input tokens a Responses request would use, without running
-   * inference.
+   * Count the input tokens a Responses request would use, without running it.
    *
    * Auth: API key (`rsk_...`)
    *
-   * The request is not billed and does not create a usage record. The count is
-   * exact when the upstream provider offers a native counter, otherwise it is
-   * an estimate.
+   * No inference runs and nothing is billed. Pass the same body you would
+   * send to `create`; any `stream` flag is dropped before sending.
    *
    * @example
    * ```ts
@@ -138,6 +136,7 @@ export class ResponsesResource {
     opts?: RequestOptions,
   ): Promise<ResponsesInputTokensResponse> {
     const { stream: _stream, ...body } = params as ResponsesParams;
+    void _stream;
     return this.http.post<ResponsesInputTokensResponse>(
       "/v1/responses/input_tokens",
       body,

@@ -6,47 +6,55 @@ import { ResponsesResource } from "../src/resources/responses.js";
 interface Call {
   path: string;
   body: unknown;
+  opts: unknown;
 }
 
-function fakeHttp(calls: Call[], reply: unknown): HttpClient {
-  return {
-    post: async (path: string, body: unknown) => {
-      calls.push({ path, body });
-      return reply;
+function fakeHttp(result: unknown): { http: HttpClient; calls: Call[] } {
+  const calls: Call[] = [];
+  const http = {
+    post: async (path: string, body: unknown, opts?: unknown) => {
+      calls.push({ path, body, opts });
+      return result;
+    },
+    get: async () => {
+      throw new Error("unexpected GET");
     },
   } as unknown as HttpClient;
+  return { http, calls };
 }
 
 test("inputTokens posts to /v1/responses/input_tokens", async () => {
-  const calls: Call[] = [];
-  const resource = new ResponsesResource(
-    fakeHttp(calls, { object: "response.input_tokens", input_tokens: 12 }),
-  );
+  const { http, calls } = fakeHttp({ object: "response.input_tokens", input_tokens: 12 });
+  const res = new ResponsesResource(http);
 
-  const result = await resource.inputTokens({
-    model: "openai/o4-mini",
-    input: "Explain the halting problem simply.",
-  });
+  const out = await res.inputTokens({ model: "openai/o4-mini", input: "Hello" });
 
   assert.equal(calls.length, 1);
-  assert.equal(calls[0]?.path, "/v1/responses/input_tokens");
-  assert.deepEqual(calls[0]?.body, {
-    model: "openai/o4-mini",
-    input: "Explain the halting problem simply.",
-  });
-  assert.equal(result.input_tokens, 12);
+  assert.equal(calls[0]!.path, "/v1/responses/input_tokens");
+  assert.deepEqual(calls[0]!.body, { model: "openai/o4-mini", input: "Hello" });
+  assert.equal(out.input_tokens, 12);
+  assert.equal(out.object, "response.input_tokens");
 });
 
-test("inputTokens drops a stray stream flag from the body", async () => {
-  const calls: Call[] = [];
-  const resource = new ResponsesResource(fakeHttp(calls, { input_tokens: 3 }));
+test("inputTokens drops a stream flag from the body", async () => {
+  const { http, calls } = fakeHttp({ input_tokens: 3 });
+  const res = new ResponsesResource(http);
 
-  await resource.inputTokens({
+  await res.inputTokens({
     model: "openai/o4-mini",
-    input: "hi",
-    stream: true,
+    input: "Hi",
+    ...({ stream: true } as Record<string, unknown>),
   } as never);
 
-  const body = calls[0]?.body as Record<string, unknown>;
-  assert.equal("stream" in body, false);
+  assert.equal(Object.prototype.hasOwnProperty.call(calls[0]!.body, "stream"), false);
+});
+
+test("inputTokens forwards request options", async () => {
+  const { http, calls } = fakeHttp({ input_tokens: 1 });
+  const res = new ResponsesResource(http);
+  const opts = { timeout: 5000 };
+
+  await res.inputTokens({ model: "openai/o4-mini", input: "x" }, opts as never);
+
+  assert.equal(calls[0]!.opts, opts);
 });
